@@ -91,8 +91,17 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder {
 		 * The ALAC decode emits signed PCM samples, so we must convert them to unsigned
 		 * PCM before stuffing them into the packet
 		 */
-		RaopRtpPacket.Audio pcmPacket = new RaopRtpPacket.Audio(pcmSamplesLength * 4);
-		alacPacket.getBuffer().getBytes(0, pcmPacket.getBuffer(), 0, RaopRtpPacket.Audio.HeaderLength);
+		RaopRtpPacket.Audio pcmPacket;
+		if (alacPacket instanceof RaopRtpPacket.AudioTransmit) {
+			pcmPacket = new RaopRtpPacket.AudioTransmit(pcmSamplesLength * 4);
+			alacPacket.getBuffer().getBytes(0, pcmPacket.getBuffer(), 0, RaopRtpPacket.AudioTransmit.HeaderLength);
+		}
+		else if (alacPacket instanceof RaopRtpPacket.AudioRetransmit) {
+			pcmPacket = new RaopRtpPacket.AudioRetransmit(pcmSamplesLength * 4);
+			alacPacket.getBuffer().getBytes(0, pcmPacket.getBuffer(), 0, RaopRtpPacket.AudioRetransmit.HeaderLength);
+		}
+		else
+			throw new ProtocolException("Packet type " + alacPacket.getClass() + " is not supported by the ALAC decoder");
 		for(int i=0; i < pcmSamples.length; ++i) {
 			/* Convert sample to unsigned PCM */
 			int pcmSampleUnsigned = pcmSamples[i] + 0x8000;

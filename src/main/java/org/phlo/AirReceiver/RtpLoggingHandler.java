@@ -16,7 +16,7 @@ public class RtpLoggingHandler extends SimpleChannelHandler {
 	{
 		RtpPacket packet = (RtpPacket)evt.getMessage();
 		
-		Level level = (packet.getPayloadType() == RaopRtpPacket.Audio.PayloadType) ? Level.FINEST : Level.FINE;
+		Level level = (packet instanceof RaopRtpPacket.AudioTransmit) ? Level.FINEST : Level.FINE;
 		if (s_logger.isLoggable(level))
 			s_logger.log(level, evt.getRemoteAddress() + "> " + packet.toString());
 		
@@ -29,7 +29,7 @@ public class RtpLoggingHandler extends SimpleChannelHandler {
 	{
 		RtpPacket packet = (RtpPacket)evt.getMessage();
 		
-		Level level = (packet.getPayloadType() == RaopRtpPacket.Audio.PayloadType) ? Level.FINEST : Level.FINE;
+		Level level = (packet instanceof RaopRtpPacket.AudioTransmit) ? Level.FINEST : Level.FINE;
 		if (s_logger.isLoggable(level))
 			s_logger.log(level, evt.getRemoteAddress() + "< " + packet.toString());
 		

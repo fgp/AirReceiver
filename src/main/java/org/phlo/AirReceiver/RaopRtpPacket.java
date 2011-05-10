@@ -33,7 +33,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		buffer.setByte(index+1, (int)((value & 0x00ffL) >> 0));
 	}
 	
-	public static class NtpTime {
+	public static final class NtpTime {
 		public static final int Length = 8;
 		
 		private final ChannelBuffer m_buffer;
@@ -72,7 +72,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 	
-	public static class TimingRequest extends Timing {
+	public static final class TimingRequest extends Timing {
 		public static final byte PayloadType = 0x52;
 		
 		public TimingRequest() {
@@ -84,7 +84,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 
-	public static class TimingResponse extends Timing {
+	public static final class TimingResponse extends Timing {
 		public static final byte PayloadType = 0x53;
 
 		public TimingResponse() {
@@ -96,7 +96,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 
-	public static class Sync extends RaopRtpPacket {
+	public static final class Sync extends RaopRtpPacket {
 		public static final byte PayloadType = 0x54;
 		public static final int Length = 20;
 		
@@ -143,7 +143,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 
-	public static class RetransmitRequest extends RaopRtpPacket {
+	public static final class RetransmitRequest extends RaopRtpPacket {
 		public static final byte PayloadType = 0x55;
 		public static final int Length = 8;
 		
@@ -194,41 +194,62 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 
-	public static class Audio extends RaopRtpPacket {
+	public static abstract class Audio extends RaopRtpPacket {
+		public Audio(int length) {
+			super(length);
+		}
+		
+		protected Audio(ChannelBuffer buffer) {
+			super(buffer);
+		}
+
+		abstract public long getTimeStamp();
+		abstract public void setTimeStamp(long timeStamp);
+		abstract public long getSSrc();
+		abstract public void setSSrc(long sSrc);
+		abstract public ChannelBuffer getPayload();
+	}
+	
+	public static final class AudioTransmit extends Audio {
 		public static final byte PayloadType = 0x60;
 		public static final int HeaderLength = RaopRtpPacket.Length + 4 + 4;
 		
-		public Audio(int payloadLength) {
+		public AudioTransmit(int payloadLength) {
 			super(HeaderLength + payloadLength);
 			assert payloadLength >= 0;
 
 			setPayloadType(PayloadType);
 		}
 		
-		protected Audio(ChannelBuffer buffer) {
+		protected AudioTransmit(ChannelBuffer buffer) {
 			super(buffer);
 		}
 		
+		@Override
 		public long getTimeStamp() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length);
 		}
 		
+		@Override
 		public void setTimeStamp(long timeStamp) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length, timeStamp);
 		}
 		
+		@Override
 		public long getSSrc() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4);
 		}
 		
+		@Override
 		public void setSSrc(long sSrc) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4, sSrc);
 		}
 		
+		@Override
 		public ChannelBuffer getPayload() {
 			return getBuffer().slice(HeaderLength, getLength() - HeaderLength);
 		}
-
+		
 		@Override
 		public String toString() {
 			StringBuilder s = new StringBuilder();
@@ -242,16 +263,84 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 	
-	public static class AudioRetransmit extends Audio {
+	public static final class AudioRetransmit extends Audio {
 		public static final byte PayloadType = 0x56;
+		public static final int HeaderLength = RaopRtpPacket.Length + 4 + 4 + 4;
 		
 		public AudioRetransmit(int payloadLength) {
-			super(payloadLength);
+			super(HeaderLength + payloadLength);
+			assert payloadLength >= 0;
+
 			setPayloadType(PayloadType);
 		}
 		
 		protected AudioRetransmit(ChannelBuffer buffer) {
 			super(buffer);
+		}
+				
+		/**
+		 * First two bytes after RTP header
+		 */
+		public int getUnknown2Bytes() {
+			return getBeUInt16(getBuffer(), RaopRtpPacket.Length);
+		}
+		
+		/**
+		 * First two bytes after RTP header
+		 */
+		public void setUnknown2Bytes(int b) {
+			setBeUInt16(getBuffer(), RaopRtpPacket.Length, b);
+		}
+
+		/**
+		 * This is to be the sequence of the original
+		 * packet (i.e., the sequence we requested to be
+		 * retransmitted).
+		 */
+		public int getOriginalSequence() {
+			return getBeUInt16(getBuffer(), RaopRtpPacket.Length + 2);
+		}
+		
+		/**
+		 * This seems is the sequence of the original
+		 * packet (i.e., the sequence we requested to be
+		 * retransmitted).
+		 */
+		public void setOriginalSequence(int seq) {
+			setBeUInt16(getBuffer(), RaopRtpPacket.Length + 2, seq);
+		}
+
+		public long getTimeStamp() {
+			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4);
+		}
+		
+		public void setTimeStamp(long timeStamp) {
+			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4, timeStamp);
+		}
+		
+		public long getSSrc() {
+			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 4);
+		}
+		
+		public void setSSrc(long sSrc) {
+			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 4, sSrc);
+		}
+		
+		public ChannelBuffer getPayload() {
+			return getBuffer().slice(HeaderLength, getLength() - HeaderLength);
+		}
+		
+		@Override
+		public String toString() {
+			StringBuilder s = new StringBuilder();
+			s.append(super.toString());
+			
+			s.append(" "); s.append("seq.orig="); s.append(getOriginalSequence());
+			s.append(" "); s.append("ts="); s.append(getTimeStamp());
+			s.append(" "); s.append("ssrc="); s.append(getSSrc());
+			s.append(" "); s.append("<"); s.append(getPayload().capacity()); s.append(" bytes payload>");
+			
+			return s.toString();
 		}
 	}
 
@@ -266,7 +355,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			case Sync.PayloadType: return new Sync(buffer);
 			case RetransmitRequest.PayloadType: return new RetransmitRequest(buffer);
 			case AudioRetransmit.PayloadType: return new AudioRetransmit(buffer);
-			case Audio.PayloadType: return new Audio(buffer);
+			case AudioTransmit.PayloadType: return new AudioTransmit(buffer);
 			default: throw new ProtocolException("Invalid PayloadType " + rtpPacket.getPayloadType());
 		}
 	}

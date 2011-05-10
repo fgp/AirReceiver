@@ -10,6 +10,7 @@ public class RtpPacket {
 	protected RtpPacket(final int size) {
 		assert size >= Length;
 		m_buffer = ChannelBuffers.buffer(size);
+		m_buffer.writeZero(size);
 		setVersion((byte)2);
 	}
 	

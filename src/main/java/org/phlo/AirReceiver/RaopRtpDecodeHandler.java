@@ -9,6 +9,9 @@ public class RaopRtpDecodeHandler extends OneToOneDecoder {
 	protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
 		throws Exception
 	{
-		return RaopRtpPacket.decode((ChannelBuffer)msg);
+		if (msg instanceof ChannelBuffer)
+			return RaopRtpPacket.decode((ChannelBuffer)msg);
+		else
+			return msg;
 	}
 }
