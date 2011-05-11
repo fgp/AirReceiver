@@ -10,6 +10,7 @@ import javax.sound.sampled.*;
 public class AudioOutputQueue {
 	private static Logger s_logger = Logger.getLogger(AudioOutputQueue.class.getName());
 
+	private static final double QueueLengthMaxSeconds = 3;
 	private static final double BufferSizeSeconds = 0.05;
 	private static final double BufferSafetyMarginSeconds= 0.02;
 
@@ -286,8 +287,18 @@ public class AudioOutputQueue {
 		m_line.close();
 	}
 	
-	public void enqueue(long playbackRemoteFrameTime, byte[] playbackSamples) {
+	public boolean enqueue(long playbackRemoteFrameTime, byte[] playbackSamples) {
+		if (fromRemoteFrameTime(playbackRemoteFrameTime) + playbackSamples.length / m_bytesPerFrame < getNowFrameTime()) {
+			s_logger.warning("Audio data arrived way too late, dropping");
+			return false;
+		}
+		else if (fromRemoteFrameTime(playbackRemoteFrameTime) - QueueLengthMaxSeconds * m_format.getSampleRate() > getNowFrameTime()) {
+			s_logger.warning("Audio data arrived way too early, dropping");
+			return false;
+		}
+			
 		m_queue.put(playbackRemoteFrameTime, playbackSamples);
+		return true;
 	}
 	
 	public void flush() {
