@@ -98,6 +98,7 @@ public class AudioOutputQueue {
 			}
 			finally {
 				m_line.removeLineListener(this);
+				m_line.drain();
 			}
 		}
 		
@@ -237,7 +238,33 @@ public class AudioOutputQueue {
 		}
 	}
 	
+	public void setGain(float gain) {
+		if (m_line.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+			FloatControl gainControl = (FloatControl)m_line.getControl(FloatControl.Type.MASTER_GAIN);
+			if (gain < gainControl.getMinimum())
+				gainControl.setValue(gainControl.getMinimum());
+			else if (gain > gainControl.getMaximum())
+				gainControl.setValue(gainControl.getMaximum());
+			else
+				gainControl.setValue(gain);
+		}
+		else
+			s_logger.warning("Audio output line doesn not support volume control");
+	}
+	
+	public float getGain(float gian) {
+		if (m_line.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+			FloatControl gainControl = (FloatControl)m_line.getControl(FloatControl.Type.MASTER_GAIN);
+			return gainControl.getValue();
+		}
+		else {
+			s_logger.warning("Audio output line doesn not support volume control");
+			return Float.NaN;
+		}
+	}
+	
 	public void close() {
+		setGain(Float.NEGATIVE_INFINITY);
 		while (m_queueThread.isAlive()) {
 			m_queueThread.interrupt();
 			Thread.yield();

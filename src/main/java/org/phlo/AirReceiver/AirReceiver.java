@@ -1,21 +1,16 @@
 package org.phlo.AirReceiver;
 
-import java.awt.MenuItem;
-import java.awt.PopupMenu;
-import java.awt.SystemTray;
-import java.awt.TrayIcon;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.*;
 import java.util.Collections;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.logging.*;
+import java.awt.*;
+import java.awt.event.*;
+import javax.swing.*;
 
 import javax.jmdns.*;
-import javax.swing.ImageIcon;
 
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.*;
@@ -64,8 +59,10 @@ public class AirReceiver {
     	java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     	
     	/* Create tray icon */
-    	final URL trayIconUrl = AirReceiver.class.getClassLoader().getResource("icon_16.png");
+    	final URL trayIconUrl = AirReceiver.class.getClassLoader().getResource("icon_32.png");
         final TrayIcon trayIcon = new TrayIcon((new ImageIcon(trayIconUrl, "AirReceiver").getImage()));
+        trayIcon.setToolTip("AirReceiver");
+        trayIcon.setImageAutoSize(true);
         PopupMenu popupMenu = new PopupMenu();
         MenuItem exitMenuItem = new MenuItem("Quit");
         exitMenuItem.addActionListener(new ActionListener() {
@@ -76,7 +73,6 @@ public class AirReceiver {
         });
         popupMenu.add(exitMenuItem);
         trayIcon.setPopupMenu(popupMenu);
-        trayIcon.setToolTip("AirReceiver");
         SystemTray.getSystemTray().add(trayIcon);
     	
         /* Get host name */
