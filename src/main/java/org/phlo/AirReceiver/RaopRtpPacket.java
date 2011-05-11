@@ -58,17 +58,52 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		public void setFraction(long fraction) {
 			setBeUInt(m_buffer, 4, fraction);
 		}
+		
+		public double getDouble() {
+			return (double)getSeconds() + (double)getFraction() / 0x100000000L;
+		}
+		
+		public void setDouble(double v) {
+			setSeconds((long)v);
+			setFraction((long)((double)0x100000000L * (v - Math.floor(v))));
+		}
 	}
 	
 	public static class Timing extends RaopRtpPacket {
-		public static final int Length = 32;
+		public static final int Length = RaopRtpPacket.Length + 4 + 8 + 8 + 8;
 		
 		protected Timing() {
 			super(Length);
+			setMarker(true);
+			setSequence(7);
 		}
 		
 		protected Timing(ChannelBuffer buffer) {
 			super(buffer);
+		}
+		
+		public NtpTime getReferenceTime() {
+			return new NtpTime(getBuffer().slice(RaopRtpPacket.Length + 4, 8));
+		}
+
+		public NtpTime getReceivedTime() {
+			return new NtpTime(getBuffer().slice(RaopRtpPacket.Length + 12, 8));
+		}
+
+		public NtpTime getSendTime() {
+			return new NtpTime(getBuffer().slice(RaopRtpPacket.Length + 20, 8));
+		}
+		
+		@Override
+		public String toString() {
+			StringBuilder s = new StringBuilder();
+			s.append(super.toString());
+			
+			s.append(" "); s.append("ref="); s.append(getReferenceTime().getDouble());
+			s.append(" "); s.append("recv="); s.append(getReceivedTime().getDouble());
+			s.append(" "); s.append("send="); s.append(getSendTime().getDouble());
+			
+			return s.toString();
 		}
 	}
 	
@@ -98,7 +133,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 
 	public static final class Sync extends RaopRtpPacket {
 		public static final byte PayloadType = 0x54;
-		public static final int Length = 20;
+		public static final int Length = RaopRtpPacket.Length + 4 + 8 + 4;
 		
 		public Sync() {
 			super(Length);
@@ -145,7 +180,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 
 	public static final class RetransmitRequest extends RaopRtpPacket {
 		public static final byte PayloadType = 0x55;
-		public static final int Length = 8;
+		public static final int Length = RaopRtpPacket.Length + 4;
 		
 		public RetransmitRequest() {
 			super(Length);
@@ -182,14 +217,6 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			s.append(" "); s.append("first="); s.append(getSequenceFirst());
 			s.append(" "); s.append("count="); s.append(getSequenceCount());
 			
-			s.append(" [");
-			for(int i=0; i < getBuffer().capacity(); ++i) {
-				if (i > 0)
-					s.append(" ");
-				s.append(Integer.toHexString(getBuffer().getByte(i) & 0xff));
-			}
-			s.append("]");
-			
 			return s.toString();
 		}
 	}
@@ -212,10 +239,10 @@ public abstract class RaopRtpPacket extends RtpPacket {
 	
 	public static final class AudioTransmit extends Audio {
 		public static final byte PayloadType = 0x60;
-		public static final int HeaderLength = RaopRtpPacket.Length + 4 + 4;
+		public static final int Length = RaopRtpPacket.Length + 4 + 4;
 		
 		public AudioTransmit(int payloadLength) {
-			super(HeaderLength + payloadLength);
+			super(Length + payloadLength);
 			assert payloadLength >= 0;
 
 			setPayloadType(PayloadType);
@@ -247,7 +274,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		
 		@Override
 		public ChannelBuffer getPayload() {
-			return getBuffer().slice(HeaderLength, getLength() - HeaderLength);
+			return getBuffer().slice(Length, getLength() - Length);
 		}
 		
 		@Override
@@ -265,10 +292,10 @@ public abstract class RaopRtpPacket extends RtpPacket {
 	
 	public static final class AudioRetransmit extends Audio {
 		public static final byte PayloadType = 0x56;
-		public static final int HeaderLength = RaopRtpPacket.Length + 4 + 4 + 4;
+		public static final int Length = RaopRtpPacket.Length + 4 + 4 + 4;
 		
 		public AudioRetransmit(int payloadLength) {
-			super(HeaderLength + payloadLength);
+			super(Length + payloadLength);
 			assert payloadLength >= 0;
 
 			setPayloadType(PayloadType);
@@ -327,7 +354,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 		
 		public ChannelBuffer getPayload() {
-			return getBuffer().slice(HeaderLength, getLength() - HeaderLength);
+			return getBuffer().slice(Length, getLength() - Length);
 		}
 		
 		@Override

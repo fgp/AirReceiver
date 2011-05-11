@@ -27,9 +27,6 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private static final String HeaderTransport = "Transport";
 	private static final String HeaderSession = "Session";
 
-	private static final Cipher s_rsaPkCS1OaepCipher = AirTunesKeys.getCipher("RSA/None/OAEPWithSHA1AndMGF1Padding", "BC");
-	private static final Cipher s_aesCipher = AirTunesKeys.getCipher("AES/CBC/NoPadding", "BC");
-	
 	private static 	AudioFormat s_audioFormat = new AudioFormat(
 		44100 /* sample rate */,
 		16 /* bits per sample */,
@@ -38,7 +35,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		true /* big endian */
 	);
 
-	private class RaopRtpAudioToControlRouterUpstreamHandler extends SimpleChannelUpstreamHandler {
+	private class RaopRtpControlToAudioRouterUpstreamHandler extends SimpleChannelUpstreamHandler {
 		@Override
 		public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
 			throws Exception
@@ -50,16 +47,25 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 				return;
 			}
 			
-			if (evt.getChannel() == m_audioChannel) {
+			Channel audioChannel;
+			synchronized(RaopAudioHandler.this) {
+				audioChannel = m_audioChannel;
+			}
+			
+			if (evt.getChannel() == audioChannel) {
 				super.messageReceived(ctx, evt);
 				return;
 			}
 
-			m_audioChannel.getPipeline().sendUpstream(evt);
+			audioChannel.getPipeline().sendUpstream(new UpstreamMessageEvent(
+				audioChannel,
+				evt.getMessage(),
+				evt.getRemoteAddress())
+			);
 		}
 	}
 	
-	private class RaopRtpControlToAudioRouterDownstreamHandler extends SimpleChannelDownstreamHandler {
+	private class RaopRtpAudioToControlRouterDownstreamHandler extends SimpleChannelDownstreamHandler {
 		@Override
 		public void writeRequested(ChannelHandlerContext ctx, MessageEvent evt)
 			throws Exception
@@ -71,12 +77,17 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 				return;
 			}
 			
-			if (evt.getChannel() == m_controlChannel) {
+			Channel controlChannel;
+			synchronized(RaopAudioHandler.this) {
+				controlChannel = m_controlChannel;
+			}
+			
+			if (evt.getChannel() == controlChannel) {
 				super.writeRequested(ctx, evt);
 				return;
 			}
 			
-			m_controlChannel.write(evt.getMessage(), evt.getRemoteAddress());
+			controlChannel.write(evt.getMessage());
 		}
 	}
 		
@@ -88,12 +99,12 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)evt.getMessage();
 			ChannelBuffer audioPayload = audioPacket.getPayload();
 			
-			synchronized(s_aesCipher) {
-				s_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
+			synchronized(RaopAudioHandler.this) {
+				m_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
 				for(int i=0; (i + 16) <= audioPayload.capacity(); i += 16) {
 					byte[] block = new byte[16];
 					audioPayload.getBytes(i, block);
-					block = s_aesCipher.update(block);
+					block = m_aesCipher.update(block);
 					audioPayload.setBytes(i, block);
 				}
 			}
@@ -118,30 +129,33 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			}
 			
 			RaopRtpPacket.AudioTransmit audioPacket = (RaopRtpPacket.AudioTransmit)packet;
-			
-			if (m_expectedSequence < 0)
-				m_expectedSequence = audioPacket.getSequence();
-
-			int gap = (0x10000 + audioPacket.getSequence() - m_expectedSequence) % 0x10000;
-			if (gap == 0) {
-				m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
+				
+			synchronized(RaopAudioHandler.this) {
+				if (m_expectedSequence < 0)
+					m_expectedSequence = audioPacket.getSequence();
+	
+				int gap = (0x10000 + audioPacket.getSequence() - m_expectedSequence) % 0x10000;
+				if (gap == 0) {
+					m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
+				}
+				else if (gap <= SequenceGapRetransmitLimit) {
+					s_logger.fine("Packet sequence number increased by " + (gap+1) + ", assuming packet(s) got lost, requesting retransmission");
+					RaopRtpPacket.RetransmitRequest resendRequestPacket = new RaopRtpPacket.RetransmitRequest();
+					resendRequestPacket.setSequenceFirst(m_expectedSequence);
+					resendRequestPacket.setSequenceCount(gap);
+					if (evt.getChannel().isOpen())
+						evt.getChannel().write(resendRequestPacket);
+					m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
+				}
+				else if (gap >= 0x10000 - SequenceGapDuplicateWindow){
+					s_logger.fine("Packet sequence number decreased by " + -((gap - 0x10000) + 1) + ", assuming duplicate or late packet, not adjusting expected sequence");
+				}
+				else {
+					s_logger.fine("Packet sequence number increased by " + (gap+1) + ", assuming sequences got out of sync, adjusting expected sequence");
+					m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
+				}
 			}
-			else if (gap <= SequenceGapRetransmitLimit) {
-				s_logger.fine("Packet sequence number increased by " + (gap+1) + ", assuming packet(s) got lost, requesting retransmission");
-				RaopRtpPacket.RetransmitRequest resendRequestPacket = new RaopRtpPacket.RetransmitRequest();
-				resendRequestPacket.setSequenceFirst(m_expectedSequence);
-				resendRequestPacket.setSequenceCount(gap);
-				evt.getChannel().write(resendRequestPacket, m_clientControlAddress);
-				m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
-			}
-			else if (gap >= 0x10000 - SequenceGapDuplicateWindow){
-				s_logger.fine("Packet sequence number decreased by " + -((gap - 0x10000) + 1) + ", assuming duplicate or late packet, not adjusting expected sequence");
-			}
-			else {
-				s_logger.fine("Packet sequence number increased by " + (gap+1) + ", assuming sequences got out of sync, adjusting expected sequence");
-				m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
-			}
-
+	
 			super.messageReceived(ctx, evt);
 			return;
 		}
@@ -196,18 +210,18 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private final ChannelHandler m_decodeHandler = new RaopRtpDecodeHandler();
 	private final ChannelHandler m_encodeHandler = new RtpEncodeHandler();
 	private final ChannelHandler m_packetLoggingHandler = new RtpLoggingHandler();
-	private final ChannelHandler m_controlToAudioRouterDownstreamHandler = new RaopRtpControlToAudioRouterDownstreamHandler();
-	private final ChannelHandler m_audioToControlRouterUpstreamHandler = new RaopRtpAudioToControlRouterUpstreamHandler();
+	private final ChannelHandler m_timeSourceHandler = new RaopRtpTimeSourceHandler();
+	private final ChannelHandler m_controlToAudioRouterDownstreamHandler = new RaopRtpControlToAudioRouterUpstreamHandler();
+	private final ChannelHandler m_audioToControlRouterUpstreamHandler = new RaopRtpAudioToControlRouterDownstreamHandler();
 	private final ChannelHandler m_decryptionHandler = new RaopRtpAudioDecryptionHandler();
 	private final ChannelHandler m_resendRequestHandler = new RaopRtpRetransmitRequestHandler();
 	private final ChannelHandler m_syncHandler = new RaopRtpSyncHandler();
 	private ChannelHandler m_audioDecodeHandler;
 	private final ChannelHandler m_audioEnqueueHandler = new RaopRtpAudioEnqueueHandler();
 	
-	private SocketAddress m_clientControlAddress;
-	@SuppressWarnings("unused")
-	private SocketAddress m_clientTimingAddress;
-
+	private final Cipher m_rsaPkCS1OaepCipher = AirTunesKeys.getCipher("RSA/None/OAEPWithSHA1AndMGF1Padding", "BC");
+	private final Cipher m_aesCipher = AirTunesKeys.getCipher("AES/CBC/NoPadding", "BC");
+		
 	private Channel m_audioChannel;
 	private Channel m_controlChannel;
 	private Channel m_timingChannel;
@@ -220,17 +234,26 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private AudioOutputQueue m_audioOutputQueue;
 	
 	@Override
-	public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
+	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
 		throws Exception
 	{
-		if (m_audioOutputQueue != null) {
-			s_logger.info("RTSP connection was shut down, closing audio output queue");
+		s_logger.info("RTSP connection was shut down, closing audio, control and timing channel and the audio output queue");
+
+		if (m_audioOutputQueue != null)
 			m_audioOutputQueue.close();
-		}
+		
+		if (m_audioChannel != null)
+			m_audioChannel.close();
+		
+		if (m_controlChannel != null)
+			m_controlChannel.close();
+		
+		if (m_timingChannel != null)
+			m_timingChannel.close();
 	}
 	
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
+	public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
 		HttpRequest req = (HttpRequest)evt.getMessage();
 		HttpMethod method = req.getMethod();
 		
@@ -329,10 +352,8 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 					else if ("rsaaeskey".equals(key)) {
 						byte[] aesKeyRaw;
 
-						synchronized(s_rsaPkCS1OaepCipher) {
-							s_rsaPkCS1OaepCipher.init(Cipher.DECRYPT_MODE, AirTunesKeys.PrivateKey);
-							aesKeyRaw = s_rsaPkCS1OaepCipher.doFinal(Base64.decodeUnpadded(value));
-						}
+						m_rsaPkCS1OaepCipher.init(Cipher.DECRYPT_MODE, AirTunesKeys.PrivateKey);
+						aesKeyRaw = m_rsaPkCS1OaepCipher.doFinal(Base64.decodeUnpadded(value));
 						
 						m_aesKey = new SecretKeySpec(aesKeyRaw, "AES");
 					}
@@ -362,7 +383,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	
 	private static Pattern s_pattern_transportOption = Pattern.compile("^([A-Za-z0-9_-]+)(=(.*))?$");
 	public void setupReceived(ChannelHandlerContext ctx, HttpRequest req)
-		throws ProtocolException, InterruptedException
+		throws ProtocolException
 	{
 		if (!req.containsHeader(HeaderTransport))
 			throw new ProtocolException("No Transport header");
@@ -395,10 +416,10 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			}
 			else if ("control_port".equals(key)) {
 				int clientControlPort = Integer.valueOf(value);
-				m_clientControlAddress = substitutePort((InetSocketAddress)ctx.getChannel().getRemoteAddress(), clientControlPort);
 				
 				m_controlChannel = createRtpChannel(
 					substitutePort((InetSocketAddress)ctx.getChannel().getLocalAddress(), 0),
+					substitutePort((InetSocketAddress)ctx.getChannel().getRemoteAddress(), clientControlPort),
 					RaopRtpChannelType.Control
 				);
 				s_logger.info("Launched RTP control service on " + m_controlChannel.getLocalAddress());
@@ -406,10 +427,10 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			}
 			else if ("timing_port".equals(key)) {
 				int clientTimingPort = Integer.valueOf(value);
-				m_clientTimingAddress = substitutePort((InetSocketAddress)ctx.getChannel().getRemoteAddress(), clientTimingPort);
 
 				m_timingChannel = createRtpChannel(
 					substitutePort((InetSocketAddress)ctx.getChannel().getLocalAddress(), 0),
+					substitutePort((InetSocketAddress)ctx.getChannel().getRemoteAddress(), clientTimingPort),
 					RaopRtpChannelType.Timing
 				);
 				s_logger.info("Launched RTP timing service on " + m_timingChannel.getLocalAddress());
@@ -422,6 +443,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		
 		m_audioChannel = createRtpChannel(
 			substitutePort((InetSocketAddress)ctx.getChannel().getLocalAddress(), 0),
+			null,
 			RaopRtpChannelType.Audio
 		);
 		s_logger.info("Launched RTP audio service on " + m_audioChannel.getLocalAddress());
@@ -490,8 +512,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		ctx.getChannel().write(response);
 	}
 
-	private Channel createRtpChannel(final SocketAddress local, final RaopRtpChannelType channelType)
-		throws InterruptedException
+	private Channel createRtpChannel(final SocketAddress local, final SocketAddress remote, final RaopRtpChannelType channelType)
 	{
 		ConnectionlessBootstrap bootstrap = new ConnectionlessBootstrap(new NioDatagramChannelFactory(
 			Executors.newCachedThreadPool())
@@ -508,6 +529,8 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 				pipeline.addLast("decoder", m_decodeHandler);
 				pipeline.addLast("encoder", m_encodeHandler);
 				pipeline.addLast("packetLogger", m_packetLoggingHandler);
+				if (channelType.equals(RaopRtpChannelType.Timing))
+					pipeline.addLast("timeSource", m_timeSourceHandler);
 				if (channelType.equals(RaopRtpChannelType.Audio))
 					pipeline.addLast("audioToControlRouter", m_audioToControlRouterUpstreamHandler);
 				if (channelType.equals(RaopRtpChannelType.Control))
@@ -528,6 +551,10 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		});
 		
 		Channel channel = bootstrap.bind(local);
+		
+		if (remote != null)
+			channel.connect(remote);
+		
 		return channel;
 	}
 	

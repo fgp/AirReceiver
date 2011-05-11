@@ -42,9 +42,8 @@ public class AudioOutputQueue {
 				m_line.addLineListener(this);
 				m_line.start();
 				
-				mainLoop:
-				while (!Thread.interrupted()) {
-					while (!Thread.interrupted()) {
+				while (!Thread.currentThread().isInterrupted()) {
+					while (!Thread.currentThread().isInterrupted()) {
 						long nextPlaybackTimeGap = Long.MAX_VALUE;
 						
 						if (!m_queue.isEmpty()) {
@@ -85,7 +84,7 @@ public class AudioOutputQueue {
 						Thread.sleep(sleepNanos / 1000000, (int)(sleepNanos % 1000000));
 					}
 					catch (InterruptedException e) {
-						break mainLoop;
+						Thread.currentThread().interrupt();
 					}
 				}
 			}
@@ -188,7 +187,7 @@ public class AudioOutputQueue {
 		}
 	}
 	
-	AudioOutputQueue(final AudioFormat format) throws LineUnavailableException, InterruptedException {
+	AudioOutputQueue(final AudioFormat format) throws LineUnavailableException {
 		m_format = format;
 		m_bytesPerFrame = m_format.getChannels() * m_format.getSampleSizeInBits() / 8;
 		m_lineLastFrame = new byte[m_bytesPerFrame];
@@ -207,19 +206,19 @@ public class AudioOutputQueue {
 				Thread.sleep(10);
 		}
 		catch(InterruptedException e) {
+			Thread.currentThread().interrupt();
 			close();
-			throw e;
 		}
 	}
 	
-	public void close() throws InterruptedException {
+	public void close() {
 		m_queueThread.interrupt();
 		try {
 			m_queueThread.join();
 		}
 		catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
 			s_logger.log(Level.WARNING, "Audio queue interrupted while waiting for queue thread to finish", e);
-			throw e;
 		}
 		finally {
 			m_line.stop();
@@ -240,7 +239,7 @@ public class AudioOutputQueue {
 	}
 	
 	public synchronized void sync(long nowRemoteFrameTime) {
-		m_remoteFrameTimeOffset = nowRemoteFrameTime - getNowFrameTime() - (int)m_format.getSampleRate();
+		m_remoteFrameTimeOffset = nowRemoteFrameTime - getNowFrameTime();
 		s_logger.info("Remote frame time to local frame time offset is now " + m_remoteFrameTimeOffset);
 	}
 	

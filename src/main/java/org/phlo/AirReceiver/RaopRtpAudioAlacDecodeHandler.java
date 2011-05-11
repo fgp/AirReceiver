@@ -67,7 +67,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder {
 		RaopRtpPacket.Audio alacPacket = (RaopRtpPacket.Audio)msg;
 		
 		/* The ALAC decode sometimes reads beyond the input's bounds
-		 * (but later discards the data). The alleviate, we allocate
+		 * (but later discards the data). To alleviate, we allocate
 		 * 3 spare bytes at input buffer's end.
 		 */
 		final byte[] alacBytes = new byte[alacPacket.getPayload().capacity() + 3];
@@ -94,11 +94,11 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder {
 		RaopRtpPacket.Audio pcmPacket;
 		if (alacPacket instanceof RaopRtpPacket.AudioTransmit) {
 			pcmPacket = new RaopRtpPacket.AudioTransmit(pcmSamplesLength * 4);
-			alacPacket.getBuffer().getBytes(0, pcmPacket.getBuffer(), 0, RaopRtpPacket.AudioTransmit.HeaderLength);
+			alacPacket.getBuffer().getBytes(0, pcmPacket.getBuffer(), 0, RaopRtpPacket.AudioTransmit.Length);
 		}
 		else if (alacPacket instanceof RaopRtpPacket.AudioRetransmit) {
 			pcmPacket = new RaopRtpPacket.AudioRetransmit(pcmSamplesLength * 4);
-			alacPacket.getBuffer().getBytes(0, pcmPacket.getBuffer(), 0, RaopRtpPacket.AudioRetransmit.HeaderLength);
+			alacPacket.getBuffer().getBytes(0, pcmPacket.getBuffer(), 0, RaopRtpPacket.AudioRetransmit.Length);
 		}
 		else
 			throw new ProtocolException("Packet type " + alacPacket.getClass() + " is not supported by the ALAC decoder");
