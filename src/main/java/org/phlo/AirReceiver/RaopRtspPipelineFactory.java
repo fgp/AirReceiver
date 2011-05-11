@@ -8,7 +8,7 @@ public class RaopRtspPipelineFactory implements ChannelPipelineFactory {
 	public ChannelPipeline getPipeline() throws Exception {
 		ChannelPipeline pipeline = Channels.pipeline();
 		
-		pipeline.addLast("executionHandler", AirReceiver.ChannelExecutionHandler);
+		pipeline.addLast("closeOnShutdownHandler", AirReceiver.CloseOnShutdownHandler);
 		pipeline.addLast("exceptionLogger", new ExceptionLoggingHandler());
 		pipeline.addLast("decoder", new RtspRequestDecoder());
 		pipeline.addLast("encoder", new RtspResponseEncoder());
@@ -17,7 +17,7 @@ public class RaopRtspPipelineFactory implements ChannelPipelineFactory {
 		pipeline.addLast("errorResponse", new RtspErrorResponseHandler());
 		pipeline.addLast("header", new RaopRtspHeaderHandler());
 		pipeline.addLast("options", new RaopRtspOptionsHandler());
-		pipeline.addLast("audio", new RaopAudioHandler());
+		pipeline.addLast("audio", new RaopAudioHandler(AirReceiver.ExecutorService));
 		pipeline.addLast("unsupportedResponse", new RtspUnsupportedResponseHandler());
 		
 		return pipeline;

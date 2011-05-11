@@ -12,7 +12,9 @@ public class AudioOutputQueue {
 
 	private static final double BufferSizeSeconds = 0.05;
 	private static final double BufferSafetyMarginSeconds= 0.02;
-	
+
+	private volatile boolean m_closing = false;
+
 	private final AudioFormat m_format;
 	private final boolean m_convertUnsignedToSigned;
 	private final int m_bytesPerFrame;
@@ -31,8 +33,6 @@ public class AudioOutputQueue {
 		@Override
 		public void run() {
 			try {
-				Thread.currentThread().setPriority(Thread.MAX_PRIORITY);
-
 				synchronized(AudioOutputQueue.this) {
 					Arrays.fill(m_lineLastFrame, (byte)0);
 					m_lineStopWallTime = -1;
@@ -43,8 +43,8 @@ public class AudioOutputQueue {
 				m_line.addLineListener(this);
 				m_line.start();
 				
-				while (!Thread.currentThread().isInterrupted()) {
-					while (!Thread.currentThread().isInterrupted()) {
+				while (!m_closing) {
+					while (!m_closing) {
 						long nextPlaybackTimeGap = Long.MAX_VALUE;
 						
 						if (getBufferedSeconds() == 0)
@@ -60,10 +60,16 @@ public class AudioOutputQueue {
 							
 							if (nextPlaybackTimeGap <= 0) {
 								final byte[] nextPlaybackSamples = m_queue.get(nextPlaybackRemoteTime);
-								s_logger.finest("Audio data containing " + nextPlaybackSamples.length / m_bytesPerFrame + " frames for playback time " + nextPlaybackFrameTime + " found in queue, appending to the output line");
-								appendFrames(nextPlaybackSamples, 0, nextPlaybackSamples.length, nextPlaybackFrameTime, true);
-								m_queue.remove(nextPlaybackRemoteTime);
+								int nextPlaybackSamplesLength = nextPlaybackSamples.length;
+								if (nextPlaybackSamplesLength % m_bytesPerFrame != 0) {
+									s_logger.warning("Audio data contains non-integral number of frames, ignore last " + (nextPlaybackSamplesLength % m_bytesPerFrame) + " bytes");
+									nextPlaybackSamplesLength -= nextPlaybackSamplesLength % m_bytesPerFrame;
+								}
+								
+								s_logger.finest("Audio data containing " + nextPlaybackSamplesLength / m_bytesPerFrame + " frames for playback time " + nextPlaybackFrameTime + " found in queue, appending to the output line");
+								appendFrames(nextPlaybackSamples, 0, nextPlaybackSamplesLength, nextPlaybackFrameTime, true);
 
+								m_queue.remove(nextPlaybackRemoteTime);
 								continue;
 							}
 						}
@@ -80,29 +86,36 @@ public class AudioOutputQueue {
 					
 					long sleepNanos = Math.round(
 						1e9 *
-						Math.max(
-							getBufferedSeconds() - BufferSafetyMarginSeconds * 0.8,
-							BufferSafetyMarginSeconds * 0.2
+						Math.min(
+							Math.max(
+								getBufferedSeconds() - BufferSafetyMarginSeconds * 0.8,
+								BufferSafetyMarginSeconds * 0.2
+							),
+							1.0
 						)
 					);
 					try {
 						Thread.sleep(sleepNanos / 1000000, (int)(sleepNanos % 1000000));
 					}
 					catch (InterruptedException e) {
-						Thread.currentThread().interrupt();
+						/* Ignore */
 					}
 				}
+				
+				appendFrames(null, 0, 0, getEndFrameTime() + m_line.available() / m_bytesPerFrame, false);
 			}
 			catch (Throwable e) {
 				s_logger.log(Level.SEVERE, "Audio output thread died unexpectedly", e);
 			}
 			finally {
 				m_line.removeLineListener(this);
-				m_line.drain();
 			}
 		}
 		
 		public void appendFrames(byte[] samples, int off, int len, long time, boolean warnNonContinous) {
+			assert off % m_bytesPerFrame == 0;
+			assert len % m_bytesPerFrame == 0;
+
 			while (true) {
 				long endFrameTime = getEndFrameTime();
 				
@@ -121,7 +134,7 @@ public class AudioOutputQueue {
 				else if (endFrameTime > time) {
 					if (warnNonContinous)
 						s_logger.warning("Audio output non-continous (end of line is " + endFrameTime + " but requested playback time is  " + time + "), skipping " + (endFrameTime - time) + " frames");
-					off += endFrameTime - time;
+					off += (endFrameTime - time) * m_bytesPerFrame;
 					time += endFrameTime - time;
 				}
 				else
@@ -130,6 +143,7 @@ public class AudioOutputQueue {
 		}
 		
 		public void appendFrames(byte[] samples, int off, int len) {
+			assert off % m_bytesPerFrame == 0;
 			assert len % m_bytesPerFrame == 0;
 
 			off = Math.min(off, (samples != null) ? samples.length : 0);
@@ -227,14 +241,13 @@ public class AudioOutputQueue {
 		m_line.open(m_format);
 		s_logger.info("Audio output line created and openend. Requested buffer of " + desiredbufferSize / m_bytesPerFrame  + " frames, got " + m_line.getBufferSize() / m_bytesPerFrame + " frames");
 		
+		m_queueThread.setDaemon(true);
+		m_queueThread.setName("Audio Enqueuer");
+		m_queueThread.setPriority(Thread.MAX_PRIORITY);
 		m_queueThread.start();
-		try {
-			while (!m_line.isActive())
-				Thread.sleep(10);
-		}
-		catch(InterruptedException e) {
-			Thread.currentThread().interrupt();
-			close();
+		while (!m_line.isActive()) {
+			try { Thread.sleep(10); }
+			catch (InterruptedException e) { /* Ignore */ }
 		}
 	}
 	
@@ -264,12 +277,12 @@ public class AudioOutputQueue {
 	}
 	
 	public void close() {
-		setGain(Float.NEGATIVE_INFINITY);
-		while (m_queueThread.isAlive()) {
+		m_closing = true;
+		while(m_queueThread.isAlive()) {
 			m_queueThread.interrupt();
-			Thread.yield();
+			try { Thread.sleep(10); }
+			catch (InterruptedException e) { /* Ignore */ }
 		}
-		m_line.stop();
 		m_line.close();
 	}
 	

@@ -9,7 +9,7 @@ public class RaopRtpTimeSourceHandler extends SimpleChannelHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpTimeSourceHandler.class.getName());
 
 	private Channel m_timingChannel;
-	private Thread m_timingRequesterThread;
+	private Thread m_synchronizationThread;
 	
 	public RaopRtpTimeSourceHandler() {
 		
@@ -42,25 +42,28 @@ public class RaopRtpTimeSourceHandler extends SimpleChannelHandler {
 	}
 	
 	@Override
-	public synchronized void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e)
+	public synchronized void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent evt)
 		throws Exception
 	{
 		m_timingChannel = ctx.getChannel();
-		m_timingRequesterThread = new Thread(new TimingRequester());
-		m_timingRequesterThread.start();
-		s_logger.fine("Timing channel connected, timing requester started");
+		m_synchronizationThread = new Thread(new TimingRequester());
+		m_synchronizationThread.setDaemon(true);
+		m_synchronizationThread.setName("Time Synchronizer");
+		m_synchronizationThread.start();
+		s_logger.fine("Tike source synchronizer started");
 	}
 	
 
 	@Override
-	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
+	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent evt)
 		throws Exception
 	{
-		while (m_timingRequesterThread.isAlive()) {
-			m_timingRequesterThread.interrupt();
-			Thread.yield();
+		while (m_synchronizationThread.isAlive()) {
+			m_synchronizationThread.interrupt();
+			try { Thread.sleep(10); }
+			catch (InterruptedException e) { /* Ignore */ }
 		}
-		s_logger.fine("Timing channel closed, timing requester stopped");
+		s_logger.fine("Time source synchronizer stopped");
 	}
 
 	@Override
@@ -69,5 +72,6 @@ public class RaopRtpTimeSourceHandler extends SimpleChannelHandler {
 	{
 		RaopRtpPacket.TimingResponse timingResponsePacket = (TimingResponse)evt.getMessage();
 		
+		super.messageReceived(ctx, evt);
 	}
 }
