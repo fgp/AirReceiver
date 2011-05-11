@@ -11,6 +11,10 @@ public class RaopRtpTimeSourceHandler extends SimpleChannelHandler {
 	private Channel m_timingChannel;
 	private Thread m_timingRequesterThread;
 	
+	public RaopRtpTimeSourceHandler() {
+		
+	}
+	
 	private double getNowNtpTime() {
 		double nowNtpTime = 0x83aa7e80L; /* Unix epoch as NTP time */
 		nowNtpTime += (double)System.currentTimeMillis() / 1000.0;

@@ -3,12 +3,14 @@ package org.phlo.AirReceiver;
 import java.util.Arrays;
 import java.util.logging.*;
 
+import javax.sound.sampled.AudioFormat;
+
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
 
 import com.beatofthedrum.alacdecoder.*;
 
-public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder {
+public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements AudioFormatProvider {
 	private static Logger s_logger = Logger.getLogger(RaopRtpAudioAlacDecodeHandler.class.getName());
 
 	public static final int FormatOptionSamplesPerFrame = 0;
@@ -22,6 +24,14 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder {
 	public static final int FormatOption82 = 8;
 	public static final int FormatOption86 = 9;
 	public static final int FormatOption8a_rate = 10;
+	
+	private static final AudioFormat AudioOutputFormat = new AudioFormat(
+		44100 /* sample rate */,
+		16 /* bits per sample */,
+		2 /* number of channels */,
+		false /* unsigned */,
+		true /* big endian */
+	);
 	
 	/**
 	 * Number of samples per ALAC frame (packet).
@@ -111,5 +121,15 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder {
 		}
 		
 		return pcmPacket;
+	}
+
+	@Override
+	public AudioFormat getAudioFormat() {
+		return AudioOutputFormat;
+	}
+
+	@Override
+	public int getFramesPerPacket() {
+		return m_samplesPerFrame;
 	}
 }

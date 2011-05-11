@@ -10,7 +10,6 @@ import java.util.regex.*;
 
 import javax.crypto.*;
 import javax.crypto.spec.*;
-import javax.sound.sampled.AudioFormat;
 
 import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
 import org.jboss.netty.buffer.ChannelBuffer;
@@ -26,14 +25,6 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	
 	private static final String HeaderTransport = "Transport";
 	private static final String HeaderSession = "Session";
-
-	private static 	AudioFormat s_audioFormat = new AudioFormat(
-		44100 /* sample rate */,
-		16 /* bits per sample */,
-		2 /* number of channels */,
-		true /* signed, unsigned is not supported, on OSX at least */,
-		true /* big endian */
-	);
 
 	private class RaopRtpControlToAudioRouterUpstreamHandler extends SimpleChannelUpstreamHandler {
 		@Override
@@ -170,15 +161,15 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 				super.messageReceived(ctx, evt);
 				return;
 			}
-			
-			if (m_audioOutputQueue == null)
-				return;
-			
+
 			RaopRtpPacket.Sync syncPacket = (RaopRtpPacket.Sync)evt.getMessage();
-			
-			if (syncPacket.getExtension()) {
-				m_expectedSequence = -1;
-				m_audioOutputQueue.sync(syncPacket.getNowMinusLatency());
+
+			synchronized(RaopAudioHandler.this) {
+				if (m_audioOutputQueue == null)
+					return;
+				
+				if (syncPacket.getExtension())
+					m_audioOutputQueue.sync(syncPacket.getNowMinusLatency());
 			}
 		}
 	}
@@ -193,10 +184,15 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 				return;
 			}
 			
-			if (m_audioOutputQueue == null)
-				return;
-			
 			RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)evt.getMessage();
+
+			AudioOutputQueue audioOutputQueue;
+			synchronized(RaopAudioHandler.this) {
+				audioOutputQueue = m_audioOutputQueue;
+			}
+			
+			if (audioOutputQueue == null)
+				return;
 			
 			byte[] samples = new byte[audioPacket.getPayload().capacity()];
 			audioPacket.getPayload().getBytes(0, samples);
@@ -228,17 +224,16 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	
 	private SecretKey m_aesKey;
 	private IvParameterSpec m_aesIv;
-
-	private int m_expectedSequence = 0;
+	private AudioFormatProvider m_audioFormatProvider;
+	private int m_expectedSequence;
 	
 	private AudioOutputQueue m_audioOutputQueue;
 	
-	@Override
-	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
-		throws Exception
 	{
-		s_logger.info("RTSP connection was shut down, closing audio, control and timing channel and the audio output queue");
-
+		reset();
+	}
+	
+	private void reset() {
 		if (m_audioOutputQueue != null)
 			m_audioOutputQueue.close();
 		
@@ -250,6 +245,26 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		
 		if (m_timingChannel != null)
 			m_timingChannel.close();
+		
+		m_audioOutputQueue = null;
+		m_expectedSequence = -1;
+		m_expectedSequence = 0;
+		m_audioFormatProvider = null;
+		m_aesIv = null;
+		m_aesKey = null;
+		m_audioChannel = null;
+		m_controlChannel = null;
+		m_timingChannel = null;
+		m_audioDecodeHandler = null;
+	}
+	
+	
+	@Override
+	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
+		throws Exception
+	{
+		s_logger.info("RTSP connection was shut down, closing audio, control and timing channel and the audio output queue");
+		reset();
 	}
 	
 	@Override
@@ -301,11 +316,10 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		if (!"application/sdp".equals(req.getHeader("Content-Type")))
 			throw new ProtocolException("Invalid Content-Type header, expected application/sdp but got " + req.getHeader("Content-Type"));
 		
+		reset();
+		
 		final String dsp = req.getContent().toString(Charset.forName("ASCII")).replace("\r", "");
 		
-		m_aesKey = null;
-		m_aesIv = null;
-
 		int alacFormatIndex = -1;
 		int audioFormatIndex = -1;
 		int descriptionFormatIndex = -1;
@@ -375,7 +389,9 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		if (formatOptions == null)
 			throw new ProtocolException("Auido format " + audioFormatIndex + " incomplete, format options not set");
 
-		m_audioDecodeHandler = new RaopRtpAudioAlacDecodeHandler(formatOptions);
+		RaopRtpAudioAlacDecodeHandler handler = new RaopRtpAudioAlacDecodeHandler(formatOptions);
+		m_audioFormatProvider = handler;
+		m_audioDecodeHandler = handler;
 				
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
 		ctx.getChannel().write(response);
@@ -466,7 +482,13 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	public void recordReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws Exception
 	{
-		m_audioOutputQueue = new AudioOutputQueue(s_audioFormat);
+		if (m_audioFormatProvider == null)
+			throw new ProtocolException("Audio format not set, cannot start recording");
+			
+		m_audioOutputQueue = new AudioOutputQueue(
+			m_audioFormatProvider.getAudioFormat(),
+			m_audioFormatProvider.getFramesPerPacket() * 5
+		);
 		
 		s_logger.info("Client initiated streaming, audio output queue created");
 		
@@ -476,6 +498,9 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	
 	private void flushReceived(ChannelHandlerContext ctx, HttpRequest req) {
 		s_logger.info("Client paused streaming");
+		
+		if (m_audioOutputQueue != null)
+			m_audioOutputQueue.flush();
 		
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
 		ctx.getChannel().write(response);
