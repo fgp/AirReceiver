@@ -212,18 +212,12 @@ public class AudioOutputQueue {
 	}
 	
 	public void close() {
-		m_queueThread.interrupt();
-		try {
-			m_queueThread.join();
+		while (m_queueThread.isAlive()) {
+			m_queueThread.interrupt();
+			Thread.yield();
 		}
-		catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-			s_logger.log(Level.WARNING, "Audio queue interrupted while waiting for queue thread to finish", e);
-		}
-		finally {
-			m_line.stop();
-			m_line.close();
-		}
+		m_line.stop();
+		m_line.close();
 	}
 	
 	public synchronized void enqueue(long playbackRemoteFrameTime, byte[] playbackSamples) {

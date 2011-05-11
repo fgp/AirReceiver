@@ -52,7 +52,10 @@ public class RaopRtpTimeSourceHandler extends SimpleChannelHandler {
 	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
 		throws Exception
 	{
-		m_timingRequesterThread.interrupt();
+		while (m_timingRequesterThread.isAlive()) {
+			m_timingRequesterThread.interrupt();
+			Thread.yield();
+		}
 		s_logger.fine("Timing channel closed, timing requester stopped");
 	}
 
