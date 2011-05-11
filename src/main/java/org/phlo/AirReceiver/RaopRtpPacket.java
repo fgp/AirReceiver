@@ -201,7 +201,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setBeUInt16(getBuffer(), RaopRtpPacket.Length, value);
 		}
 
-		public long getSequenceCount() {
+		public int getSequenceCount() {
 			return getBeUInt16(getBuffer(), RaopRtpPacket.Length + 2);
 		}
 

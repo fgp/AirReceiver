@@ -103,55 +103,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			super.messageReceived(ctx, evt);
 		}
 	}
-	
-	private class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandler {
-		private static final int SequenceGapRetransmitLimit = 32;
-		private static final int SequenceGapDuplicateWindow = 256;
-				
-		@Override
-		public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
-			throws Exception
-		{
-			RaopRtpPacket packet = (RaopRtpPacket)evt.getMessage();
-			
-			if (!(packet instanceof RaopRtpPacket.AudioTransmit)) {
-				super.messageReceived(ctx, evt);
-				return;
-			}
-			
-			RaopRtpPacket.AudioTransmit audioPacket = (RaopRtpPacket.AudioTransmit)packet;
-				
-			synchronized(RaopAudioHandler.this) {
-				if (m_expectedSequence < 0)
-					m_expectedSequence = audioPacket.getSequence();
-	
-				int gap = (0x10000 + audioPacket.getSequence() - m_expectedSequence) % 0x10000;
-				if (gap == 0) {
-					m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
-				}
-				else if (gap <= SequenceGapRetransmitLimit) {
-					s_logger.fine("Packet sequence number increased by " + (gap+1) + ", assuming packet(s) got lost, requesting retransmission");
-					RaopRtpPacket.RetransmitRequest resendRequestPacket = new RaopRtpPacket.RetransmitRequest();
-					resendRequestPacket.setSequenceFirst(m_expectedSequence);
-					resendRequestPacket.setSequenceCount(gap);
-					if (evt.getChannel().isOpen())
-						evt.getChannel().write(resendRequestPacket);
-					m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
-				}
-				else if (gap >= 0x10000 - SequenceGapDuplicateWindow){
-					s_logger.fine("Packet sequence number decreased by " + -((gap - 0x10000) + 1) + ", assuming duplicate or late packet, not adjusting expected sequence");
-				}
-				else {
-					s_logger.fine("Packet sequence number increased by " + (gap+1) + ", assuming sequences got out of sync, adjusting expected sequence");
-					m_expectedSequence = (audioPacket.getSequence() + 1) % 0x10000;
-				}
-			}
-	
-			super.messageReceived(ctx, evt);
-			return;
-		}
-	}
-	
+		
 	private class RaopRtpSyncHandler extends SimpleChannelUpstreamHandler {
 		@Override
 		public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
@@ -225,8 +177,6 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private SecretKey m_aesKey;
 	private IvParameterSpec m_aesIv;
 	private AudioFormatProvider m_audioFormatProvider;
-	private int m_expectedSequence;
-	
 	private AudioOutputQueue m_audioOutputQueue;
 	
 	{
@@ -247,8 +197,6 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			m_timingChannel.close();
 		
 		m_audioOutputQueue = null;
-		m_expectedSequence = -1;
-		m_expectedSequence = 0;
 		m_audioFormatProvider = null;
 		m_aesIv = null;
 		m_aesKey = null;
