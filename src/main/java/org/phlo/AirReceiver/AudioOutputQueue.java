@@ -74,7 +74,8 @@ public class AudioOutputQueue {
 							nextPlaybackTimeGap
 						);
 						appendFrames(null, 0, 0, getEndFrameTime() + silenceFrames, false);
-						s_logger.warning("Audio output line about to underrun since " + nextPlaybackTimeGap + " frames appear to be missing , appended " + silenceFrames + " frames of silence");
+						if (nextPlaybackTimeGap < Long.MAX_VALUE)
+							s_logger.warning("Audio output line about to underrun since " + nextPlaybackTimeGap + " frames appear to be missing , appended " + silenceFrames + " frames of silence");
 					}
 					
 					long sleepNanos = Math.round(

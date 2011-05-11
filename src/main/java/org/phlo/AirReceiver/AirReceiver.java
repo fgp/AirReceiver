@@ -1,5 +1,12 @@
 package org.phlo.AirReceiver;
 
+import java.awt.MenuItem;
+import java.awt.PopupMenu;
+import java.awt.SystemTray;
+import java.awt.TrayIcon;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.IOException;
 import java.io.InputStream;
 import java.net.*;
 import java.util.Collections;
@@ -8,6 +15,7 @@ import java.util.concurrent.*;
 import java.util.logging.*;
 
 import javax.jmdns.*;
+import javax.swing.ImageIcon;
 
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.*;
@@ -55,21 +63,25 @@ public class AirReceiver {
     	/* Register BouncyCaster security provider */
     	java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
     	
-    	/* Get address to listen on */
-    	final InetAddress airTunesHostAddress = InetAddress.getLocalHost();
-
-    	/* Create mDNS responder. Also arrange for all services
-    	 * to be unregistered on VM shutdown
-    	 */
-    	final JmDNS jmDns = JmDNS.create(airTunesHostAddress, airTunesHostAddress.getHostName());
-        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
-			@Override public void run() {
-				jmDns.unregisterAllServices();
-	    		s_logger.info("Unregistered all mDNS services");
+    	/* Create tray icon */
+    	final URL trayIconUrl = AirReceiver.class.getClassLoader().getResource("icon_16.png");
+        final TrayIcon trayIcon = new TrayIcon((new ImageIcon(trayIconUrl, "AirReceiver").getImage()));
+        PopupMenu popupMenu = new PopupMenu();
+        MenuItem exitMenuItem = new MenuItem("Quit");
+        exitMenuItem.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent arg0) {
+				System.exit(0);
 			}
-        }));
-        s_logger.info("Created mDNS responder on " + airTunesHostAddress);
-
+        });
+        popupMenu.add(exitMenuItem);
+        trayIcon.setPopupMenu(popupMenu);
+        trayIcon.setToolTip("AirReceiver");
+        SystemTray.getSystemTray().add(trayIcon);
+    	
+        /* Get host name */
+        final String hostName = InetAddress.getLocalHost().getHostName();
+        
         /* Create AirTunes RTSP pipeline factory.
          * NOTE: We immediatly create a test channel. This isn't necessary,
          * but uncoveres failures earlier
@@ -86,19 +98,55 @@ public class AirReceiver {
 		airTunesRtspBootstrap.setOption("reuseAddress", true);
 		airTunesRtspBootstrap.setOption("child.tcpNoDelay", true);
 		airTunesRtspBootstrap.setOption("child.keepAlive", false);
-		airTunesRtspBootstrap.bind(new InetSocketAddress(airTunesHostAddress, AirtunesServiceRTSPPort));
-        s_logger.info("Launched RTSP service on " + airTunesHostAddress + ":" + AirtunesServiceRTSPPort);
-	        
-        /* Publish RAOP service */
-        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
-    		AirtunesServiceType,
-    		AirtunesServiceName,
-    		AirtunesServiceRTSPPort,
-    		0 /* weight */, 0 /* priority */,
-    		AirtunesServiceProperties
-    	);
-		jmDns.registerService(airTunesServiceInfo);
-		s_logger.info("Registered AirTunes service '" + airTunesServiceInfo.getName() + "' on " + airTunesHostAddress);
+		airTunesRtspBootstrap.bind(new InetSocketAddress(Inet4Address.getByName("0.0.0.0"), AirtunesServiceRTSPPort));
+        s_logger.info("Launched RTSP service on port " + AirtunesServiceRTSPPort);
+        
+    	/* Create mDNS responders. Also arrange for all services
+    	 * to be unregistered on VM shutdown
+    	 */
+    	for(NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
+    		if (iface.isLoopback())
+    			continue;
+    		if (iface.isPointToPoint())
+    			continue;
+    		if (!iface.isUp())
+    			continue;
+
+    		for(final InetAddress addr: Collections.list(iface.getInetAddresses())) {
+    			if (!(addr instanceof Inet4Address))
+    				continue;
+    			
+    			(new Thread(new Runnable() {
+					@Override public void run() {
+						try {
+					    	final JmDNS jmDns = JmDNS.create(addr, hostName);
+					        Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
+								@Override public void run() {
+									jmDns.unregisterAllServices();
+						    		s_logger.info("Unregistered all mDNS services on " + addr);
+								}
+					        }));
+					        s_logger.info("Created mDNS responder on " + addr);
+	
+						        
+					        /* Publish RAOP service */
+					        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
+					    		AirtunesServiceType,
+					    		AirtunesServiceName,
+					    		AirtunesServiceRTSPPort,
+					    		0 /* weight */, 0 /* priority */,
+					    		AirtunesServiceProperties
+					    	);
+							jmDns.registerService(airTunesServiceInfo);
+							s_logger.info("Registered AirTunes service '" + airTunesServiceInfo.getName() + "' on " + addr);
+						}
+						catch (Throwable e) {
+							s_logger.log(Level.SEVERE, "Failed to publish service on " + addr, e);
+						}
+					}
+				})).start();
+    		}
+    	}
     }
 
 }
