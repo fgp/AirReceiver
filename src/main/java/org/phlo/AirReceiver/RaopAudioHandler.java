@@ -486,8 +486,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			throw new ProtocolException("Audio format not set, cannot start recording");
 			
 		m_audioOutputQueue = new AudioOutputQueue(
-			m_audioFormatProvider.getAudioFormat(),
-			m_audioFormatProvider.getFramesPerPacket() * 5
+			m_audioFormatProvider.getAudioFormat()
 		);
 		
 		s_logger.info("Client initiated streaming, audio output queue created");

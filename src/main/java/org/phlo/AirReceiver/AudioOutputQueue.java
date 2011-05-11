@@ -10,12 +10,12 @@ import javax.sound.sampled.*;
 public class AudioOutputQueue {
 	private static Logger s_logger = Logger.getLogger(AudioOutputQueue.class.getName());
 
-	private static final double BufferSafetyMarginFraction= 0.5;
+	private static final double BufferSizeSeconds = 0.05;
+	private static final double BufferSafetyMarginSeconds= 0.02;
 	
 	private final AudioFormat m_format;
 	private final boolean m_convertUnsignedToSigned;
 	private final int m_bytesPerFrame;
-	private final double m_bufferSizeSeconds;
 	private final SourceDataLine m_line;
 	private final byte[] m_lineLastFrame;
 	private final ConcurrentSkipListMap<Long, byte[]> m_queue = new ConcurrentSkipListMap<Long, byte[]>();
@@ -50,7 +50,7 @@ public class AudioOutputQueue {
 						if (getBufferedSeconds() == 0)
 							s_logger.warning("Audio output line has underrun");
 						
-						if (getBufferedSeconds() >= m_bufferSizeSeconds * BufferSafetyMarginFraction)
+						if (getBufferedSeconds() >= BufferSafetyMarginSeconds)
 							break;
 						
 						if (!m_queue.isEmpty()) {
@@ -69,7 +69,7 @@ public class AudioOutputQueue {
 						}
 						
 						final long silenceFrames = Math.min(
-							Math.round((m_bufferSizeSeconds * BufferSafetyMarginFraction * 1.5 - getBufferedSeconds()) *
+							Math.round((BufferSafetyMarginSeconds * 1.2 - getBufferedSeconds()) *
 							(double)m_format.getSampleRate()),
 							nextPlaybackTimeGap
 						);
@@ -80,8 +80,8 @@ public class AudioOutputQueue {
 					long sleepNanos = Math.round(
 						1e9 *
 						Math.max(
-							getBufferedSeconds() - m_bufferSizeSeconds * BufferSafetyMarginFraction,
-							m_bufferSizeSeconds * BufferSafetyMarginFraction / 10.0
+							getBufferedSeconds() - BufferSafetyMarginSeconds * 0.8,
+							BufferSafetyMarginSeconds * 0.2
 						)
 					);
 					try {
@@ -193,7 +193,7 @@ public class AudioOutputQueue {
 		}
 	}
 	
-	AudioOutputQueue(final AudioFormat format, final int bufferSizeFrames) throws LineUnavailableException {
+	AudioOutputQueue(final AudioFormat format) throws LineUnavailableException {
 		if (AudioFormat.Encoding.PCM_SIGNED.equals(format.getEncoding())) {
 			m_format = format;
 			m_convertUnsignedToSigned = false;
@@ -213,16 +213,17 @@ public class AudioOutputQueue {
 		}
 		
 		m_bytesPerFrame = m_format.getChannels() * m_format.getSampleSizeInBits() / 8;
-		m_bufferSizeSeconds = (double)bufferSizeFrames / (double)m_format.getSampleRate();
 		m_lineLastFrame = new byte[m_bytesPerFrame];
 		
+		int desiredbufferSize = (int)Math.pow(2, Math.ceil(Math.log(BufferSizeSeconds * m_format.getSampleRate() * m_bytesPerFrame) / Math.log(2.0)));
 		DataLine.Info lineInfo = new DataLine.Info(
 			SourceDataLine.class,
 			m_format,
-			bufferSizeFrames * m_bytesPerFrame
+			desiredbufferSize
 		);
 		m_line = (SourceDataLine)AudioSystem.getLine(lineInfo);
 		m_line.open(m_format);
+		s_logger.info("Audio output line created and openend. Requested buffer of " + desiredbufferSize / m_bytesPerFrame  + " frames, got " + m_line.getBufferSize() / m_bytesPerFrame + " frames");
 		
 		m_queueThread.start();
 		try {
@@ -277,7 +278,7 @@ public class AudioOutputQueue {
 	}
 	
 	private synchronized long getNowFrameTime() {
-		return m_line.getFramePosition() + m_lineFramesMissed + getFramesSinceStop(getNowWallTime());
+		return m_line.getLongFramePosition() + m_lineFramesMissed + getFramesSinceStop(getNowWallTime());
 	}
 	
 	private synchronized long getEndFrameTime() {
@@ -285,7 +286,6 @@ public class AudioOutputQueue {
 	}
 	
 	private synchronized double getBufferedSeconds() {
-		return (double)(m_lineFramesWritten - m_line.getFramePosition()) / m_format.getSampleRate();
-//		return (double)((m_line.getBufferSize() - m_line.available()) / m_bytesPerFrame) / (double)m_format.getSampleRate();
+		return (double)(m_lineFramesWritten - m_line.getLongFramePosition()) / m_format.getSampleRate();
 	}
 }
