@@ -10,10 +10,10 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpRetransmitRequestHandler.class.getName());
 
-	private static final double RetransmitRequestsLimitSeconds = 1.0;
-	private static final double DuplicateDetectThresholdSeconds = 1.0;
-	private static final double RetransmitTimeoutSeconds = 0.3;
-	private static final int RetransmitAttempts = 3;
+	private static final double RetransmitRequestsLimitSeconds = 0.1;
+	private static final double DuplicateDetectThresholdSeconds = 5;
+	private static final double RetransmitTimeoutSeconds = 0.5;
+	private static final int RetransmitAttempts = 2;
 	
 	private static class MissingPacket {
 		public int sequence;

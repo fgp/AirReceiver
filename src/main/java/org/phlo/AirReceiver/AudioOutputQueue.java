@@ -41,6 +41,11 @@ public class AudioOutputQueue implements AudioClock {
 	private final int m_bytesPerFrame;
 	
 	/**
+	 * Sample rate
+	 */
+	private final double m_sampleRate;
+	
+	/**
 	 * JavaSounds audio output line
 	 */
 	private final SourceDataLine m_line;
@@ -142,7 +147,7 @@ public class AudioOutputQueue implements AudioClock {
 						 */
 						final long silenceFrames = Math.min(
 							Math.round((BufferSafetyMarginSeconds * 1.2 - getBufferedSeconds()) *
-							(double)m_format.getSampleRate()),
+							(double)m_sampleRate),
 							nextPlaybackTimeGap
 						);
 						appendFrames(null, 0, 0, getEndLocalFrameTime() + silenceFrames, true);
@@ -153,13 +158,17 @@ public class AudioOutputQueue implements AudioClock {
 						else {
 							/* No more packets queued, mute line */
 							setLineGain(Float.NEGATIVE_INFINITY);
+							s_logger.warning("Audio output line about to underrun since no more packets are queued, appended " + silenceFrames + " frames of silence and muted line");
 						}
 						
 						/* We've probably produced an audible distortion anyway, might
 						 * was well adjust the timing offset
 						 */
 						synchronized(AudioOutputQueue.this) {
-							m_activeRemoteFrameTimeOffset = m_requestedRemoteFrameTimeOffset;
+							if (m_requestedRemoteFrameTimeOffset != m_activeRemoteFrameTimeOffset) {
+								s_logger.info("Remote frame time to local frame time offset is now " + m_requestedRemoteFrameTimeOffset + " after adjustment due to queue underrun by " + (double)(m_requestedRemoteFrameTimeOffset - m_activeRemoteFrameTimeOffset) / m_sampleRate + " seconds");
+								m_activeRemoteFrameTimeOffset = m_requestedRemoteFrameTimeOffset;
+							}
 						}
 					}
 					
@@ -325,12 +334,13 @@ public class AudioOutputQueue implements AudioClock {
 		
 		/* Audio format-dependent stuff */
 		m_bytesPerFrame = m_format.getChannels() * m_format.getSampleSizeInBits() / 8;
+		m_sampleRate = m_format.getSampleRate();
 		m_lineLastFrame = new byte[m_bytesPerFrame];
 		for(int b=0; b < m_lineLastFrame.length; ++b)
 			m_lineLastFrame[b] = (b % 2 == 0) ? (byte)-128 : (byte)0;
 			
 		/* Compute desired line buffer size and obtain a line */
-		int desiredbufferSize = (int)Math.pow(2, Math.ceil(Math.log(BufferSizeSeconds * m_format.getSampleRate() * m_bytesPerFrame) / Math.log(2.0)));
+		int desiredbufferSize = (int)Math.pow(2, Math.ceil(Math.log(BufferSizeSeconds * m_sampleRate * m_bytesPerFrame) / Math.log(2.0)));
 		DataLine.Info lineInfo = new DataLine.Info(
 			SourceDataLine.class,
 			m_format,
@@ -426,7 +436,7 @@ public class AudioOutputQueue implements AudioClock {
 			s_logger.warning("Audio data arrived " + (-playbackDelayFrames) + " frames too late, dropping");
 			return false;
 		}
-		else if (playbackDelayFrames > QueueLengthMaxSeconds * m_format.getSampleRate()) {
+		else if (playbackDelayFrames > QueueLengthMaxSeconds * m_sampleRate) {
 			/* The packet extends further into the future that our maximum queue size.
 			 * We reject it, since this is probably the result of some timing discrepancies
 			 */
@@ -458,13 +468,13 @@ public class AudioOutputQueue implements AudioClock {
 	@Override
 	public synchronized void requestSyncRemoteFrameTime(long remoteFrameTime, double localSecondsTime, boolean force) {
 		/* Convert local seconds time to frame time */
-		final long localFrameTime = Math.round((localSecondsTime - getLocalSecondsOffset()) * m_format.getSampleRate());
+		final long localFrameTime = Math.round((localSecondsTime - getLocalSecondsOffset()) * (double)m_sampleRate);
 
 		/* Compute the requested offset and the adjustment we'd have to make to the
 		 * active offset
 		 */
 		m_requestedRemoteFrameTimeOffset = remoteFrameTime - localFrameTime;
-		double requestedAdjustmentSeconds = (double)(m_requestedRemoteFrameTimeOffset - m_activeRemoteFrameTimeOffset) / m_format.getSampleRate();
+		double requestedAdjustmentSeconds = (double)(m_requestedRemoteFrameTimeOffset - m_activeRemoteFrameTimeOffset) / m_sampleRate;
 		
 		if ((Math.abs(requestedAdjustmentSeconds) > TimingPrecision) || force) {
 			/* We've either been forced to adjust the offset, or the timing is way off.
@@ -478,7 +488,7 @@ public class AudioOutputQueue implements AudioClock {
 			/* We're within parameters. Since adjusting the offset produces an
 			 * audible distortion, we ignore the sync request
 			 */
-			s_logger.fine("Remote frame time to local frame time offset not adjusted, requested adjustment was only " + requestedAdjustmentSeconds + " seconds");
+			s_logger.fine("Remote frame time to local frame time offset is still " + m_activeRemoteFrameTimeOffset + ", requested adjustment was only " + requestedAdjustmentSeconds + " seconds");
 		}
 	}
 	
@@ -509,7 +519,7 @@ public class AudioOutputQueue implements AudioClock {
 	 */
 	@Override
 	public double getNowLocalSecondsTime() {
-		return getLocalSecondsOffset() + (double)getNowLocalFrameTime() / m_format.getSampleRate();
+		return getLocalSecondsOffset() + (double)getNowLocalFrameTime() / m_sampleRate;
 	}
 	
 	/**
@@ -529,6 +539,6 @@ public class AudioOutputQueue implements AudioClock {
 	 * @return
 	 */
 	private synchronized double getBufferedSeconds() {
-		return (double)(getEndLocalFrameTime() - getNowLocalFrameTime()) / m_format.getSampleRate();
+		return (double)(getEndLocalFrameTime() - getNowLocalFrameTime()) / m_sampleRate;
 	}
 }

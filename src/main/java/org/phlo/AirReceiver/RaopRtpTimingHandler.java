@@ -1,6 +1,7 @@
 package org.phlo.AirReceiver;
 
 import java.util.Deque;
+import java.util.Iterator;
 import java.util.logging.Logger;
 
 import org.jboss.netty.channel.*;
@@ -39,7 +40,9 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	
 	private final AudioClock m_audioClock;
 	private Thread m_synchronizationThread;
-	private final Deque<Double> m_lastDeltas = new java.util.LinkedList<Double>();
+	private double m_lastRemoteTime = Double.NaN;
+	private final Deque<Double> m_deltaWeights = new java.util.LinkedList<Double>();
+	private final Deque<Double> m_deltaValues = new java.util.LinkedList<Double>();
 	private double m_delta = Double.NaN;
 	
 	public RaopRtpTimingHandler(final AudioClock audioClock) {
@@ -88,13 +91,28 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	}
 
 	private void timingResponseReceived(RaopRtpPacket.TimingResponse timingResponsePacket) {
+		m_lastRemoteTime = timingResponsePacket.getSendTime().getDouble();
+		
 		final double localSecondsTime = 
 			m_audioClock.getNowLocalSecondsTime() * 0.5 +
 			timingResponsePacket.getReferenceTime().getDouble() * 0.5;
 		final double remoteSecondsTime =
-			timingResponsePacket.getSendTime().getDouble() * 0.5 +
-			timingResponsePacket.getReceivedTime().getDouble() * 0.5;
-		addDelta(remoteSecondsTime - localSecondsTime);
+			timingResponsePacket.getReceivedTime().getDouble() * 0.5 +
+			timingResponsePacket.getSendTime().getDouble() * 0.5;
+		final double delta = remoteSecondsTime - localSecondsTime;
+		
+		final double localInterval =
+			m_audioClock.getNowLocalSecondsTime() -
+			timingResponsePacket.getReferenceTime().getDouble();
+		final double remoteInterval =
+			timingResponsePacket.getSendTime().getDouble() -
+			timingResponsePacket.getReceivedTime().getDouble();
+		final double transmissionTime = Math.max(localInterval - remoteInterval, 0);
+		
+		final double weight = 10e-3 / (transmissionTime + 10e-3);
+		addDelta(delta, weight);
+		
+		s_logger.fine("Timing response indicated delta " + delta + " and had transmission time " + transmissionTime + ", weighting with " + weight);
 	}
 
 	private void syncReceived(RaopRtpPacket.Sync syncPacket) {
@@ -107,19 +125,31 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 			localSecondsTime,
 			syncPacket.getExtension()
 		);
+		
+		s_logger.info("Sync packet indicated remote time " + syncPacket.getTimeLastSync().getDouble() + ", last timing response indiciated " + m_lastRemoteTime + ", difference is " + (syncPacket.getTimeLastSync().getDouble() - m_lastRemoteTime));
 	}
 	
-	private void addDelta(double delta) {
-		m_lastDeltas.addLast(delta);
-		while (m_lastDeltas.size() > DeltaCount)
-			m_lastDeltas.removeFirst();
+	private void addDelta(double delta, double weight) {
+		m_deltaValues.addLast(delta);
+		m_deltaWeights.addLast(weight);
+		while (m_deltaValues.size() > DeltaCount)
+			m_deltaValues.removeFirst();
+		while (m_deltaWeights.size() > DeltaCount)
+			m_deltaWeights.removeFirst();
 		
-		double avg = 0.0;
-		for(double d: m_lastDeltas)
-			avg += d;
-		avg /= m_lastDeltas.size();
-		s_logger.fine("Delta between remote and local seconds time is now " + m_delta + " seconds after adjustment of " + (avg - m_delta) + " seconds");
+		double vsum = 0.0;
+		double wsum = 0.0;
+		final Iterator<Double> i_v = m_deltaValues.iterator();
+		final Iterator<Double> i_w = m_deltaWeights.iterator();
+		while ((i_v.hasNext() && (i_w.hasNext()))) {
+			final double v = i_v.next();
+			final double w = i_w.next();
+			vsum += v*w;
+			wsum += w;
+		}
+		double avg = vsum / wsum;
 
+		s_logger.fine("Delta between remote and local seconds time is now " + avg + " seconds after adjustment of " + (avg - m_delta) + " seconds");
 		m_delta = avg;
 	}
 	
