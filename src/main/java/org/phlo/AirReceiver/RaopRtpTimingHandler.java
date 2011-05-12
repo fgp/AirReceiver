@@ -9,7 +9,7 @@ import org.jboss.netty.channel.*;
 public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpTimingHandler.class.getName());
 
-	public static final double SyncInternval = 0.1;
+	public static final double TimeRequestInterval = 0.1;
 	public static final int DeltaCount = 128;
 	
 	private class TimingRequester implements Runnable {
@@ -29,7 +29,7 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 				
 				m_channel.write(timingRequestPacket);
 				try {
-					Thread.sleep(Math.round(SyncInternval * 1000));
+					Thread.sleep(Math.round(TimeRequestInterval * 1000));
 				}
 				catch (InterruptedException e) {
 					Thread.currentThread().interrupt();
@@ -91,8 +91,6 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	}
 
 	private void timingResponseReceived(RaopRtpPacket.TimingResponse timingResponsePacket) {
-		m_lastRemoteTime = timingResponsePacket.getSendTime().getDouble();
-		
 		final double localSecondsTime = 
 			m_audioClock.getNowLocalSecondsTime() * 0.5 +
 			timingResponsePacket.getReferenceTime().getDouble() * 0.5;
@@ -108,8 +106,14 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 			timingResponsePacket.getSendTime().getDouble() -
 			timingResponsePacket.getReceivedTime().getDouble();
 		final double transmissionTime = Math.max(localInterval - remoteInterval, 0);
-		
 		final double weight = 10e-3 / (transmissionTime + 10e-3);
+		
+		if ((localInterval < 0) || (localInterval > TimeRequestInterval)) {
+			s_logger.fine("Timing response is " + localInterval + " seconds old, ignoring");
+			return;
+		}
+		
+		m_lastRemoteTime = timingResponsePacket.getSendTime().getDouble();
 		addDelta(delta, weight);
 		
 		s_logger.fine("Timing response indicated delta " + delta + " and had transmission time " + transmissionTime + ", weighting with " + weight);
