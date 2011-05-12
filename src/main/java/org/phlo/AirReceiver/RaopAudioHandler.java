@@ -127,8 +127,13 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			RaopRtpPacket.Sync syncPacket = (RaopRtpPacket.Sync)evt.getMessage();
 
 			synchronized(RaopAudioHandler.this) {
-				if ((m_audioOutputQueue != null) && syncPacket.getExtension())
-					m_audioOutputQueue.sync(syncPacket.getNowMinusLatency());
+				if (m_audioOutputQueue != null) {
+					m_audioOutputQueue.sync(
+						syncPacket.getNowMinusLatency(),
+						m_audioOutputQueue.getNowFrameTime(),
+						syncPacket.getExtension()
+					);
+				}
 			}
 		}
 	}
