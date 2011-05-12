@@ -144,29 +144,25 @@ public class AirReceiver {
     			if (!(addr instanceof Inet4Address))
     				continue;
     			
-    			(new Thread(new Runnable() {
-					@Override public void run() {
-						try {
-							/* Create mDNS responder for address */
-					    	final JmDNS jmDNS = JmDNS.create(addr, hostName);
-					    	s_jmDNSInstances.add(jmDNS);
-	
-					        /* Publish RAOP service */
-					        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
-					    		AirtunesServiceType,
-					    		AirtunesServiceNamePrefix + hostName,
-					    		AirtunesServiceRTSPPort,
-					    		0 /* weight */, 0 /* priority */,
-					    		AirtunesServiceProperties
-					    	);
-					        jmDNS.registerService(airTunesServiceInfo);
-							s_logger.info("Registered AirTunes service '" + airTunesServiceInfo.getName() + "' on " + addr);
-						}
-						catch (Throwable e) {
-							s_logger.log(Level.SEVERE, "Failed to publish service on " + addr, e);
-						}
-					}
-				})).start();
+				try {
+					/* Create mDNS responder for address */
+			    	final JmDNS jmDNS = JmDNS.create(addr, hostName);
+			    	s_jmDNSInstances.add(jmDNS);
+
+			        /* Publish RAOP service */
+			        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
+			    		AirtunesServiceType,
+			    		AirtunesServiceNamePrefix + hostName,
+			    		AirtunesServiceRTSPPort,
+			    		0 /* weight */, 0 /* priority */,
+			    		AirtunesServiceProperties
+			    	);
+			        jmDNS.registerService(airTunesServiceInfo);
+					s_logger.info("Registered AirTunes service '" + airTunesServiceInfo.getName() + "' on " + addr);
+				}
+				catch (Throwable e) {
+					s_logger.log(Level.SEVERE, "Failed to publish service on " + addr, e);
+				}
     		}
     	}
     }
