@@ -472,7 +472,7 @@ public class AudioOutputQueue {
 			/* We're within parameters. Since adjusting the offset produces an
 			 * audible distortion, we ignore the sync request
 			 */
-			s_logger.info("Remote frame time to local frame time offset not adjusted, requested adjustment was only " + requestedAdjustmentSeconds + " seconds");
+			s_logger.fine("Remote frame time to local frame time offset not adjusted, requested adjustment was only " + requestedAdjustmentSeconds + " seconds");
 		}
 	}
 	

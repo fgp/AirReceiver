@@ -74,6 +74,9 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
 		throws Exception
 	{
+		if (!(msg instanceof RaopRtpPacket.Audio))
+			return msg;
+		
 		RaopRtpPacket.Audio alacPacket = (RaopRtpPacket.Audio)msg;
 		
 		/* The ALAC decode sometimes reads beyond the input's bounds

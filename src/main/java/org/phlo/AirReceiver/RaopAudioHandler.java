@@ -22,36 +22,25 @@ import org.jboss.netty.handler.codec.rtsp.*;
 public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RaopAudioHandler.class.getName());
 
-	private static final double Latency = 2.0;
-	
 	static enum RaopRtpChannelType { Audio, Control, Timing };
 	
 	private static final String HeaderTransport = "Transport";
 	private static final String HeaderSession = "Session";
 
-	private class RaopRtpControlToAudioRouterUpstreamHandler extends SimpleChannelUpstreamHandler {
+	private class RaopRtpInputToAudioRouterUpstreamHandler extends SimpleChannelUpstreamHandler {
 		@Override
 		public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
 			throws Exception
 		{
 			RaopRtpPacket packet = (RaopRtpPacket)evt.getMessage();
 			
-			if (!(packet instanceof RaopRtpPacket.Audio)) {
-				super.messageReceived(ctx, evt);
-				return;
-			}
-			
-			Channel audioChannel;
+			Channel audioChannel = null;
 			synchronized(RaopAudioHandler.this) {
-				audioChannel = m_audioChannel;
+				if ((m_audioChannel != null) && m_audioChannel.isOpen() && m_audioChannel.isReadable())
+					audioChannel = m_audioChannel;
 			}
 			
-			if (evt.getChannel() == audioChannel) {
-				super.messageReceived(ctx, evt);
-				return;
-			}
-
-			if ((audioChannel != null) && audioChannel.isOpen() && audioChannel.isReadable()) {
+			if (audioChannel != null) {
 				audioChannel.getPipeline().sendUpstream(new UpstreamMessageEvent(
 					audioChannel,
 					evt.getMessage(),
@@ -61,85 +50,36 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		}
 	}
 	
-	private class RaopRtpAudioToControlRouterDownstreamHandler extends SimpleChannelDownstreamHandler {
+	private class RaopRtpAudioToOutputRouterDownstreamHandler extends SimpleChannelDownstreamHandler {
 		@Override
 		public void writeRequested(ChannelHandlerContext ctx, MessageEvent evt)
 			throws Exception
 		{
 			RaopRtpPacket packet = (RaopRtpPacket)evt.getMessage();
 			
-			if (!(packet instanceof RaopRtpPacket.RetransmitRequest)) {
-				super.writeRequested(ctx, evt);
-				return;
-			}
-			
-			Channel controlChannel;
+			Channel controlChannel = null;
+			Channel timingChannel = null;
 			synchronized(RaopAudioHandler.this) {
-				controlChannel = m_controlChannel;
+				if ((m_controlChannel != null) && m_controlChannel.isOpen() && m_controlChannel.isWritable())
+					controlChannel = m_controlChannel;
+				if ((m_timingChannel != null) && m_timingChannel.isOpen() && m_timingChannel.isWritable())
+					timingChannel = m_timingChannel;
 			}
 			
-			if (evt.getChannel() == controlChannel) {
+			if (packet instanceof RaopRtpPacket.RetransmitRequest) {
+				if (controlChannel != null)
+					controlChannel.write(evt.getMessage());
+			}
+			else if (packet instanceof RaopRtpPacket.TimingRequest) {
+				if (timingChannel != null)
+					timingChannel.write(evt.getMessage());
+			}
+			else {
 				super.writeRequested(ctx, evt);
-				return;
 			}
-			
-			if ((controlChannel != null) && controlChannel.isOpen() && controlChannel.isWritable())
-				controlChannel.write(evt.getMessage());
 		}
 	}
 		
-	private class RaopRtpAudioDecryptionHandler extends SimpleChannelUpstreamHandler {
-		@Override
-		public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
-			throws Exception
-		{
-			RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)evt.getMessage();
-			ChannelBuffer audioPayload = audioPacket.getPayload();
-			
-			synchronized(RaopAudioHandler.this) {
-				if ((m_aesKey != null) && (m_aesIv != null)) {
-					m_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
-					for(int i=0; (i + 16) <= audioPayload.capacity(); i += 16) {
-						byte[] block = new byte[16];
-						audioPayload.getBytes(i, block);
-						block = m_aesCipher.update(block);
-						audioPayload.setBytes(i, block);
-					}
-				}
-				else {
-					s_logger.warning("No AES parameters available, dropping packet");
-					return;
-				}
-			}
-			
-			super.messageReceived(ctx, evt);
-		}
-	}
-		
-	private class RaopRtpSyncHandler extends SimpleChannelUpstreamHandler {
-		@Override
-		public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
-			throws Exception
-		{
-			if (!(evt.getMessage() instanceof RaopRtpPacket.Sync)) {
-				super.messageReceived(ctx, evt);
-				return;
-			}
-
-			RaopRtpPacket.Sync syncPacket = (RaopRtpPacket.Sync)evt.getMessage();
-
-			synchronized(RaopAudioHandler.this) {
-				if (m_audioOutputQueue != null) {
-					m_audioOutputQueue.sync(
-						syncPacket.getNowMinusLatency(),
-						m_audioOutputQueue.getNowFrameTime(),
-						syncPacket.getExtension()
-					);
-				}
-			}
-		}
-	}
-	
 	public class RaopRtpAudioEnqueueHandler extends SimpleChannelUpstreamHandler {
 		@Override
 		public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
@@ -170,34 +110,30 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		}
 	}
 	
+	private final Cipher m_rsaPkCS1OaepCipher = AirTunesKeys.getCipher("RSA/None/OAEPWithSHA1AndMGF1Padding", "BC");
+
 	private final ExecutorService m_rtpExecutorService;
 	
 	private final ChannelHandler m_exceptionLoggingHandler = new ExceptionLoggingHandler();
 	private final ChannelHandler m_decodeHandler = new RaopRtpDecodeHandler();
 	private final ChannelHandler m_encodeHandler = new RtpEncodeHandler();
 	private final ChannelHandler m_packetLoggingHandler = new RtpLoggingHandler();
-	private final ChannelHandler m_timeSourceHandler = new RaopRtpTimeSourceHandler();
-	private final ChannelHandler m_controlToAudioRouterDownstreamHandler = new RaopRtpControlToAudioRouterUpstreamHandler();
-	private final ChannelHandler m_audioToControlRouterUpstreamHandler = new RaopRtpAudioToControlRouterDownstreamHandler();
-	private final ChannelHandler m_decryptionHandler = new RaopRtpAudioDecryptionHandler();
-	private ChannelHandler m_resendRequestHandler;
-	private final ChannelHandler m_syncHandler = new RaopRtpSyncHandler();
+	private final ChannelHandler m_inputToAudioRouterDownstreamHandler = new RaopRtpInputToAudioRouterUpstreamHandler();
+	private final ChannelHandler m_audioToOutputRouterUpstreamHandler = new RaopRtpAudioToOutputRouterDownstreamHandler();
+	private ChannelHandler m_decryptionHandler;
 	private ChannelHandler m_audioDecodeHandler;
+	private ChannelHandler m_resendRequestHandler;
+	private ChannelHandler m_timingHandler;
 	private final ChannelHandler m_audioEnqueueHandler = new RaopRtpAudioEnqueueHandler();
-	
-	private final Cipher m_rsaPkCS1OaepCipher = AirTunesKeys.getCipher("RSA/None/OAEPWithSHA1AndMGF1Padding", "BC");
-	private final Cipher m_aesCipher = AirTunesKeys.getCipher("AES/CBC/NoPadding", "BC");
-		
+
+	private AudioStreamInformationProvider m_audioStreamInformationProvider;
+	private AudioOutputQueue m_audioOutputQueue;
+
+	private final ChannelGroup m_rtpChannels = new DefaultChannelGroup();
 	private Channel m_audioChannel;
 	private Channel m_controlChannel;
 	private Channel m_timingChannel;
-	private ChannelGroup m_rtpChannels = new DefaultChannelGroup();
-	
-	private SecretKey m_aesKey;
-	private IvParameterSpec m_aesIv;
-	private AudioStreamInformationProvider m_audioStreamInformationProvider;
-	private AudioOutputQueue m_audioOutputQueue;
-	
+		
 	public RaopAudioHandler(ExecutorService rtpExecutorService) {
 		m_rtpExecutorService = rtpExecutorService;
 		reset();
@@ -209,15 +145,17 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 
 		m_rtpChannels.close().awaitUninterruptibly();
 
-		m_audioOutputQueue = null;
+		m_decryptionHandler = null;
+		m_audioDecodeHandler = null;
+		m_resendRequestHandler = null;
+		m_timingHandler = null;
 		
 		m_audioStreamInformationProvider = null;
-		m_aesIv = null;
-		m_aesKey = null;
+		m_audioOutputQueue = null;
+		
 		m_audioChannel = null;
 		m_controlChannel = null;
 		m_timingChannel = null;
-		m_audioDecodeHandler = null;
 	}
 	
 	@Override
@@ -280,7 +218,9 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		reset();
 		
 		final String dsp = req.getContent().toString(Charset.forName("ASCII")).replace("\r", "");
-		
+
+		SecretKey aesKey = null;
+		IvParameterSpec aesIv = null;
 		int alacFormatIndex = -1;
 		int audioFormatIndex = -1;
 		int descriptionFormatIndex = -1;
@@ -330,10 +270,10 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 						m_rsaPkCS1OaepCipher.init(Cipher.DECRYPT_MODE, AirTunesKeys.PrivateKey);
 						aesKeyRaw = m_rsaPkCS1OaepCipher.doFinal(Base64.decodeUnpadded(value));
 						
-						m_aesKey = new SecretKeySpec(aesKeyRaw, "AES");
+						aesKey = new SecretKeySpec(aesKeyRaw, "AES");
 					}
 					else if ("aesiv".equals(key)) {
-						m_aesIv = new IvParameterSpec(Base64.decodeUnpadded(value));
+						aesIv = new IvParameterSpec(Base64.decodeUnpadded(value));
 					}
 					break;
 					
@@ -350,12 +290,19 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		if (formatOptions == null)
 			throw new ProtocolException("Auido format " + audioFormatIndex + " incomplete, format options not set");
 
+		if ((aesKey != null) && (aesIv != null))
+			m_decryptionHandler = new RaopRtpAudioDecryptionHandler(aesKey, aesIv);
+		
 		RaopRtpAudioAlacDecodeHandler handler = new RaopRtpAudioAlacDecodeHandler(formatOptions);
 		m_audioStreamInformationProvider = handler;
 		m_audioDecodeHandler = handler;
-		
+
 		m_resendRequestHandler = new RaopRtpRetransmitRequestHandler(m_audioStreamInformationProvider);
-				
+
+		m_audioOutputQueue = new AudioOutputQueue(m_audioStreamInformationProvider);
+
+		m_timingHandler = new RaopRtpTimingHandler(m_audioOutputQueue);
+
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
 		ctx.getChannel().write(response);
 	}
@@ -448,8 +395,6 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		if (m_audioStreamInformationProvider == null)
 			throw new ProtocolException("Audio stream not configured, cannot start recording");
 			
-		m_audioOutputQueue = new AudioOutputQueue(m_audioStreamInformationProvider);
-		
 		s_logger.info("Client initiated streaming, created audio output queue");
 		
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
@@ -509,23 +454,21 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 				pipeline.addLast("exceptionLogger", m_exceptionLoggingHandler);
 				pipeline.addLast("decoder", m_decodeHandler);
 				pipeline.addLast("encoder", m_encodeHandler);
-				pipeline.addLast("packetLogger", m_packetLoggingHandler);
-				if (channelType.equals(RaopRtpChannelType.Timing))
-					pipeline.addLast("timeSource", m_timeSourceHandler);
-				if (channelType.equals(RaopRtpChannelType.Audio))
-					pipeline.addLast("audioToControlRouter", m_audioToControlRouterUpstreamHandler);
-				if (channelType.equals(RaopRtpChannelType.Control))
-					pipeline.addLast("controlToAudioRouter", m_controlToAudioRouterDownstreamHandler);
-				if (channelType.equals(RaopRtpChannelType.Audio))
+				if (!channelType.equals(RaopRtpChannelType.Audio)) {
+					pipeline.addLast("inputToAudioRouter", m_inputToAudioRouterDownstreamHandler);
+					pipeline.addLast("packetLogger", m_packetLoggingHandler);
+				}
+				else {
+					pipeline.addLast("packetLogger", m_packetLoggingHandler);
+					pipeline.addLast("audioToOutputRouter", m_audioToOutputRouterUpstreamHandler);
 					pipeline.addLast("resendRequester", m_resendRequestHandler);
-				if (channelType.equals(RaopRtpChannelType.Audio) && (m_decryptionHandler != null))
-					pipeline.addLast("decrypt", m_decryptionHandler);
-				if (channelType.equals(RaopRtpChannelType.Audio) && (m_audioDecodeHandler != null))
-					pipeline.addLast("audioDecode", m_audioDecodeHandler);
-				if (channelType.equals(RaopRtpChannelType.Control))
-					pipeline.addLast("sync", m_syncHandler);
-				if (channelType.equals(RaopRtpChannelType.Audio))
+					if (m_decryptionHandler != null)
+						pipeline.addLast("decrypt", m_decryptionHandler);
+					if (m_audioDecodeHandler != null)
+						pipeline.addLast("audioDecode", m_audioDecodeHandler);
+					pipeline.addLast("timing", m_timingHandler);
 					pipeline.addLast("enqueue", m_audioEnqueueHandler);
+				}
 				
 				return pipeline;
 			}
