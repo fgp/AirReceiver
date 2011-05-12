@@ -22,6 +22,8 @@ import org.jboss.netty.handler.codec.rtsp.*;
 public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RaopAudioHandler.class.getName());
 
+	private static final double Latency = 2.0;
+	
 	static enum RaopRtpChannelType { Audio, Control, Timing };
 	
 	private static final String HeaderTransport = "Transport";
@@ -178,7 +180,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private final ChannelHandler m_controlToAudioRouterDownstreamHandler = new RaopRtpControlToAudioRouterUpstreamHandler();
 	private final ChannelHandler m_audioToControlRouterUpstreamHandler = new RaopRtpAudioToControlRouterDownstreamHandler();
 	private final ChannelHandler m_decryptionHandler = new RaopRtpAudioDecryptionHandler();
-	private final ChannelHandler m_resendRequestHandler = new RaopRtpRetransmitRequestHandler();
+	private ChannelHandler m_resendRequestHandler;
 	private final ChannelHandler m_syncHandler = new RaopRtpSyncHandler();
 	private ChannelHandler m_audioDecodeHandler;
 	private final ChannelHandler m_audioEnqueueHandler = new RaopRtpAudioEnqueueHandler();
@@ -193,7 +195,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	
 	private SecretKey m_aesKey;
 	private IvParameterSpec m_aesIv;
-	private AudioFormatProvider m_audioFormatProvider;
+	private AudioStreamInformationProvider m_audioStreamInformationProvider;
 	private AudioOutputQueue m_audioOutputQueue;
 	
 	public RaopAudioHandler(ExecutorService rtpExecutorService) {
@@ -209,7 +211,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 
 		m_audioOutputQueue = null;
 		
-		m_audioFormatProvider = null;
+		m_audioStreamInformationProvider = null;
 		m_aesIv = null;
 		m_aesKey = null;
 		m_audioChannel = null;
@@ -349,8 +351,10 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			throw new ProtocolException("Auido format " + audioFormatIndex + " incomplete, format options not set");
 
 		RaopRtpAudioAlacDecodeHandler handler = new RaopRtpAudioAlacDecodeHandler(formatOptions);
-		m_audioFormatProvider = handler;
+		m_audioStreamInformationProvider = handler;
 		m_audioDecodeHandler = handler;
+		
+		m_resendRequestHandler = new RaopRtpRetransmitRequestHandler(m_audioStreamInformationProvider);
 				
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
 		ctx.getChannel().write(response);
@@ -441,12 +445,10 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	public void recordReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws Exception
 	{
-		if (m_audioFormatProvider == null)
-			throw new ProtocolException("Audio format not set, cannot start recording");
+		if (m_audioStreamInformationProvider == null)
+			throw new ProtocolException("Audio stream not configured, cannot start recording");
 			
-		m_audioOutputQueue = new AudioOutputQueue(
-			m_audioFormatProvider.getAudioFormat()
-		);
+		m_audioOutputQueue = new AudioOutputQueue(m_audioStreamInformationProvider);
 		
 		s_logger.info("Client initiated streaming, created audio output queue");
 		

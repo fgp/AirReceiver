@@ -10,7 +10,7 @@ import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
 
 import com.beatofthedrum.alacdecoder.*;
 
-public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements AudioFormatProvider {
+public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements AudioStreamInformationProvider {
 	private static Logger s_logger = Logger.getLogger(RaopRtpAudioAlacDecodeHandler.class.getName());
 
 	public static final int FormatOptionSamplesPerFrame = 0;
@@ -131,5 +131,10 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	@Override
 	public int getFramesPerPacket() {
 		return m_samplesPerFrame;
+	}
+	
+	@Override
+	public double getPacketsPerSecond() {
+		return getAudioFormat().getSampleRate() / (double)getFramesPerPacket();
 	}
 }

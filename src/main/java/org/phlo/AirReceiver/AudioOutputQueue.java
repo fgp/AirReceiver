@@ -297,26 +297,28 @@ public class AudioOutputQueue {
 		}
 	}
 	
-	AudioOutputQueue(final AudioFormat format) throws LineUnavailableException {
+	AudioOutputQueue(final AudioStreamInformationProvider streamInfoProvider) throws LineUnavailableException {
+		final AudioFormat audioFormat = streamInfoProvider.getAudioFormat();
+		
 		/* OSX does not support unsigned PCM lines. We thust always request
 		 * a signed line, and convert from unsigned to signed if necessary
 		 */
-		if (AudioFormat.Encoding.PCM_SIGNED.equals(format.getEncoding())) {
-			m_format = format;
+		if (AudioFormat.Encoding.PCM_SIGNED.equals(audioFormat.getEncoding())) {
+			m_format = audioFormat;
 			m_convertUnsignedToSigned = false;
 		}
-		else if (AudioFormat.Encoding.PCM_UNSIGNED.equals(format.getEncoding())) {
+		else if (AudioFormat.Encoding.PCM_UNSIGNED.equals(audioFormat.getEncoding())) {
 			m_format = new AudioFormat(
-				format.getSampleRate(),
-				format.getSampleSizeInBits(),
-				format.getChannels(),
+				audioFormat.getSampleRate(),
+				audioFormat.getSampleSizeInBits(),
+				audioFormat.getChannels(),
 				true,
-				format.isBigEndian()
+				audioFormat.isBigEndian()
 			);
 			m_convertUnsignedToSigned = true;
 		}
 		else {
-			throw new LineUnavailableException("Audio encoding " + format.getEncoding() + " is not supported");
+			throw new LineUnavailableException("Audio encoding " + audioFormat.getEncoding() + " is not supported");
 		}
 		
 		/* Audio format-dependent stuff */
@@ -355,6 +357,7 @@ public class AudioOutputQueue {
 	 */
 	private void setLineGain(float gain) {
 		if (m_line.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+			/* Bound gain value by min and max declared by the control */
 			FloatControl gainControl = (FloatControl)m_line.getControl(FloatControl.Type.MASTER_GAIN);
 			if (gain < gainControl.getMinimum())
 				gainControl.setValue(gainControl.getMinimum());
@@ -390,11 +393,15 @@ public class AudioOutputQueue {
 	 */
 	public void close() {
 		m_closing = true;
+		
+		/* Wait for queue thread to exit */
 		while(m_queueThread.isAlive()) {
 			m_queueThread.interrupt();
 			try { Thread.sleep(10); }
 			catch (InterruptedException e) { /* Ignore */ }
 		}
+		
+		/* Done with line */
 		m_line.close();
 	}
 	
@@ -406,14 +413,21 @@ public class AudioOutputQueue {
 	 * @return true if the sample data was added to the queue
 	 */
 	public boolean enqueue(long playbackRemoteStartFrameTime, byte[] playbackSamples) {
+		/* Compute playback delay, i.e., the difference between the last sample's
+		 * playback time and the current line time
+		 */
 		long playbackStartFrameTime = fromRemoteFrameTime(playbackRemoteStartFrameTime);
 		long playbackDelayFrames = playbackStartFrameTime + playbackSamples.length / m_bytesPerFrame - getNowFrameTime();
 		
 		if (playbackDelayFrames < 0) {
+			/* The whole packet is scheduled to be played in the past */
 			s_logger.warning("Audio data arrived " + (-playbackDelayFrames) + " frames too late, dropping");
 			return false;
 		}
 		else if (playbackDelayFrames > QueueLengthMaxSeconds * m_format.getSampleRate()) {
+			/* The packet extends further into the future that our maximum queue size.
+			 * We reject it, since this is probably the result of some timing discrepancies
+			 */
 			s_logger.warning("Audio data arrived " + (playbackDelayFrames) + " frames too early, dropping");
 			return false;
 		}
@@ -440,26 +454,53 @@ public class AudioOutputQueue {
 	}
 	
 	public synchronized void sync(long remoteFrameTime, long lineFrameTime, boolean reset) {
+		/* Compute the requested offset and the adjustment we'd have to make to the
+		 * active offset
+		 */
 		m_requestedRemoteFrameTimeOffset = remoteFrameTime - lineFrameTime;
 		double requestedAdjustmentSeconds = (double)(m_requestedRemoteFrameTimeOffset - m_activeRemoteFrameTimeOffset) / m_format.getSampleRate();
 		
 		if ((Math.abs(requestedAdjustmentSeconds) > TimingPrecision) || reset) {
+			/* We've either been forced to adjust the offset, or the timing is way off.
+			 * We've got no other chance than to adjust the active offset, even if this
+			 * probably produces an audible distortion
+			 */
 			m_activeRemoteFrameTimeOffset = m_requestedRemoteFrameTimeOffset;
 			s_logger.info("Remote frame time to local frame time offset is now " + m_activeRemoteFrameTimeOffset + " after adjustment by " + requestedAdjustmentSeconds + " seconds");
 		}
 		else {
+			/* We're within parameters. Since adjusting the offset produces an
+			 * audible distortion, we ignore the sync request
+			 */
 			s_logger.info("Remote frame time to local frame time offset not adjusted, requested adjustment was only " + requestedAdjustmentSeconds + " seconds");
 		}
 	}
 	
+	/**
+	 * Returns the current line frame time.
+	 * 
+	 * @return the current line frame time
+	 */
 	public synchronized long getNowFrameTime() {
 		return m_line.getLongFramePosition();
 	}
 	
+	/**
+	 * Returns the frame time of the current line end,
+	 * i.e. the playback time of the last frame written
+	 * to the line
+	 * 
+	 * @return line end frame time
+	 */
 	private synchronized long getEndFrameTime() {
 		return m_lineFramesWritten;
 	}
 	
+	/**
+	 * Returns the number of seconds worth of samples
+	 * which are currently buffered by the line
+	 * @return
+	 */
 	private synchronized double getBufferedSeconds() {
 		return (double)(getEndFrameTime() - getNowFrameTime()) / m_format.getSampleRate();
 	}

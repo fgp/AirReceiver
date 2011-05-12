@@ -10,10 +10,10 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpRetransmitRequestHandler.class.getName());
 
-	private static final int SequenceGapRetransmitLimit = 128;
-	private static final int SequenceGapDuplicateWindow = 512;
-	private static final double RetransmitTimeout = 0.1;
-	private static final int RetransmitLimit = 3;
+	private static final double RetransmitRequestsLimitSeconds = 1.0;
+	private static final double DuplicateDetectThresholdSeconds = 1.0;
+	private static final double RetransmitTimeoutSeconds = 0.3;
+	private static final int RetransmitAttempts = 3;
 	
 	private static class MissingPacket {
 		public int sequence;
@@ -21,8 +21,18 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		public long retransmitRequestedNanoTime = Long.MIN_VALUE;
 	}
 	
+	private final int m_retransmitRequestsLimitPackets;
+	private final int m_duplicateDetectThresholdPackets;
 	private int m_lastSequence = -1;
 	private static final List<MissingPacket> m_missingPackets = new java.util.LinkedList<MissingPacket>();
+	
+	public RaopRtpRetransmitRequestHandler(AudioStreamInformationProvider streamInfoProvider) {
+		final double packetsPerSecond = streamInfoProvider.getPacketsPerSecond();
+		m_retransmitRequestsLimitPackets = (int)Math.ceil(RetransmitRequestsLimitSeconds * packetsPerSecond);
+		m_duplicateDetectThresholdPackets = (int)Math.ceil(DuplicateDetectThresholdSeconds * packetsPerSecond);
+		
+		s_logger.info("Expecting " + packetsPerSecond + " packets per second, maximum number of in-flight retransmits is " + m_retransmitRequestsLimitPackets + ", duplicate detection window is " + m_duplicateDetectThresholdPackets + " packets");
+	}
 	
 	private void markRetransmitted(int sequence) {
 		Iterator<MissingPacket> i = m_missingPackets.iterator();
@@ -38,7 +48,7 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		missingPacket.sequence = sequence;
 		m_missingPackets.add(missingPacket);
 		
-		while (m_missingPackets.size() > SequenceGapRetransmitLimit)
+		while (m_missingPackets.size() > m_retransmitRequestsLimitPackets)
 			m_missingPackets.remove(0);
 	}
 	
@@ -51,15 +61,15 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		while (missingPacketIterator.hasNext()) {
 			MissingPacket missingPacket = missingPacketIterator.next();
 
-			if (missingPacket.retransmitRequestedNanoTime > nowNanoTime - RetransmitTimeout*1e9)
+			if (missingPacket.retransmitRequestedNanoTime > nowNanoTime - RetransmitTimeoutSeconds*1e9)
 				continue;
 			
 			missingPacket.retransmitRequestedNanoTime = nowNanoTime;
 			++missingPacket.retransmitRequestCount;
 			if (missingPacket.retransmitRequestCount > 1)
 				s_logger.fine("Packet retransmit timed out, re-requesting retransmit of " + missingPacket.sequence);
-			if (missingPacket.retransmitRequestCount >= RetransmitLimit) {
-				s_logger.fine("Packet retransmit request limit reached, giving up on " + missingPacket.sequence);
+			if (missingPacket.retransmitRequestCount >= RetransmitAttempts) {
+				s_logger.fine("Packet retransmit request limit reached, last request for retransmit of " + missingPacket.sequence);
 				missingPacketIterator.remove();
 			}
 
@@ -116,13 +126,13 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		if (increase == 1) {
 			m_lastSequence = audioPacket.getSequence();
 		}
-		else if ((increase > 1) && (increase <= SequenceGapRetransmitLimit)) {
+		else if ((increase > 1) && (increase <= m_retransmitRequestsLimitPackets)) {
 			s_logger.fine("Packet sequence number increased by " + increase + ", assuming " + (increase-1) + " packet(s) got lost,");
 			for(int s = (m_lastSequence + 1) % 0x10000; s != audioPacket.getSequence(); s = (s + 1) % 0x10000)
 				markMissing(s);
 			m_lastSequence = audioPacket.getSequence();;
 		}
-		else if (decrease <= SequenceGapDuplicateWindow) {
+		else if (decrease <= m_duplicateDetectThresholdPackets) {
 			s_logger.fine("Packet sequence number decreased by " + decrease + ", assuming duplicate or late packet");
 		}
 		else {
