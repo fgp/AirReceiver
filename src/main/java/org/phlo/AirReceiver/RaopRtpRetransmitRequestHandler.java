@@ -48,8 +48,11 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		missingPacket.sequence = sequence;
 		m_missingPackets.add(missingPacket);
 		
-		while (m_missingPackets.size() > m_retransmitRequestsLimitPackets)
+		while (m_missingPackets.size() > m_retransmitRequestsLimitPackets) {
+			MissingPacket m = m_missingPackets.get(0);
+			s_logger.warning("Packet " + m.sequence + " wasn't retransmitted in time");
 			m_missingPackets.remove(0);
+		}
 	}
 	
 	private void requestRetransmits(ChannelHandlerContext ctx) {

@@ -2,6 +2,7 @@ package org.phlo.AirReceiver;
 
 import java.util.Arrays;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.locks.LockSupport;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -21,7 +22,7 @@ public class AudioOutputQueue implements AudioClock {
 	 */
 	private volatile boolean m_closing = false;
 	
-	private final double m_localSecondsOffset = (double)0x83aa7e80L + (double)System.currentTimeMillis() / 1e3;
+	private final double m_localSecondsOffset = (double)0x83aa7e80L;
 
 	/**
 	 *  The line's audio format
@@ -185,8 +186,7 @@ public class AudioOutputQueue implements AudioClock {
 							1.0
 						)
 					);
-					try { Thread.sleep(sleepNanos / 1000000, (int)(sleepNanos % 1000000)); }
-					catch (InterruptedException e) { /* Ignore */ }
+					LockSupport.parkNanos(sleepNanos);
 					
 					if (getBufferedSeconds() == 0)
 						s_logger.warning("Audio output line has underrun");
@@ -482,7 +482,7 @@ public class AudioOutputQueue implements AudioClock {
 			 * probably produces an audible distortion
 			 */
 			m_activeRemoteFrameTimeOffset = m_requestedRemoteFrameTimeOffset;
-			s_logger.info("Remote frame time to local frame time offset is now " + m_activeRemoteFrameTimeOffset + " after adjustment by " + requestedAdjustmentSeconds + " seconds");
+			s_logger.warning("Remote frame time to local frame time offset is now " + m_activeRemoteFrameTimeOffset + " after adjustment by " + requestedAdjustmentSeconds + " seconds");
 		}
 		else {
 			/* We're within parameters. Since adjusting the offset produces an

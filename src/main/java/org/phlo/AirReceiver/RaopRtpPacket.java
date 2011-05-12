@@ -107,6 +107,12 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 	
+	/**
+	 * Time synchronization request.
+	 * 
+	 * The sequence number must always be 7, otherwise
+	 * at least iOS ignores the packet.
+	 */
 	public static final class TimingRequest extends Timing {
 		public static final byte PayloadType = 0x52;
 		
@@ -119,6 +125,12 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		}
 	}
 
+	/**
+	 * Time synchronization response.
+	 * 
+	 * The sequence should match the request's 
+	 * sequence, which is always 7.
+	 */
 	public static final class TimingResponse extends Timing {
 		public static final byte PayloadType = 0x53;
 
@@ -144,23 +156,23 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			super(buffer);
 		}
 
-		public long getNowMinusLatency() {
+		public long getTimeStampMinusLatency() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length);
 		}
 
-		public void setNowMinusLatency(long value) {
+		public void setTimeStampMinusLatency(long value) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length, value);
 		}
 
-		public NtpTime getTimeLastSync() {
+		public NtpTime getTime() {
 			return new NtpTime(getBuffer().slice(RaopRtpPacket.Length + 4, 8));
 		}
 		
-		public long getNow() {
+		public long getTimeStamp() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 8);
 		}
 
-		public void setNow(long value) {
+		public void setTimeStamp(long value) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 8, value);
 		}
 		
@@ -169,10 +181,9 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			StringBuilder s = new StringBuilder();
 			s.append(super.toString());
 			
-			s.append(" "); s.append("now-lat="); s.append(getNowMinusLatency());
-			s.append(" "); s.append("last.sec="); s.append(getTimeLastSync().getSeconds());
-			s.append(" "); s.append("last.frac="); s.append(getTimeLastSync().getFraction());
-			s.append(" "); s.append("now="); s.append(getNow());
+			s.append(" "); s.append("ts-lat="); s.append(getTimeStampMinusLatency());
+			s.append(" "); s.append("ts="); s.append(getTimeStamp());
+			s.append(" "); s.append("time="); s.append(getTime().getDouble());
 			
 			return s.toString();
 		}
@@ -362,7 +373,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			StringBuilder s = new StringBuilder();
 			s.append(super.toString());
 			
-			s.append(" "); s.append("seq.orig="); s.append(getOriginalSequence());
+			s.append(" "); s.append("?="); s.append(getUnknown2Bytes());
+			s.append(" "); s.append("oseq="); s.append(getOriginalSequence());
 			s.append(" "); s.append("ts="); s.append(getTimeStamp());
 			s.append(" "); s.append("ssrc="); s.append(getSSrc());
 			s.append(" "); s.append("<"); s.append(getPayload().capacity()); s.append(" bytes payload>");

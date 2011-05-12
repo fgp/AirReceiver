@@ -40,7 +40,6 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	
 	private final AudioClock m_audioClock;
 	private Thread m_synchronizationThread;
-	private double m_lastRemoteTime = Double.NaN;
 	private final Deque<Double> m_deltaWeights = new java.util.LinkedList<Double>();
 	private final Deque<Double> m_deltaValues = new java.util.LinkedList<Double>();
 	private double m_delta = Double.NaN;
@@ -108,29 +107,22 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 		final double transmissionTime = Math.max(localInterval - remoteInterval, 0);
 		final double weight = 10e-3 / (transmissionTime + 10e-3);
 		
-		if ((localInterval < 0) || (localInterval > TimeRequestInterval)) {
-			s_logger.fine("Timing response is " + localInterval + " seconds old, ignoring");
-			return;
-		}
-		
-		m_lastRemoteTime = timingResponsePacket.getSendTime().getDouble();
-		addDelta(delta, weight);
-		
+		addDelta(delta, weight);		
 		s_logger.fine("Timing response indicated delta " + delta + " and had transmission time " + transmissionTime + ", weighting with " + weight);
 	}
 
 	private void syncReceived(RaopRtpPacket.Sync syncPacket) {
-		double localSecondsTime = fromRemoteSecondsTime(syncPacket.getTimeLastSync().getDouble());
+		double localSecondsTime = fromRemoteSecondsTime(syncPacket.getTime().getDouble());
 		if (Double.isNaN(localSecondsTime))
-			localSecondsTime = m_audioClock.getNowLocalSecondsTime();
-		
+			localSecondsTime = m_audioClock.getNowLocalSecondsTime();		
+		final double syncAge = Math.abs(m_audioClock.getNowLocalSecondsTime() - localSecondsTime);
+			
 		m_audioClock.requestSyncRemoteFrameTime(
-			syncPacket.getNowMinusLatency(),
+			syncPacket.getTimeStampMinusLatency(),
 			localSecondsTime,
 			syncPacket.getExtension()
 		);
-		
-		s_logger.info("Sync packet indicated remote time " + syncPacket.getTimeLastSync().getDouble() + ", last timing response indiciated " + m_lastRemoteTime + ", difference is " + (syncPacket.getTimeLastSync().getDouble() - m_lastRemoteTime));
+		s_logger.info("Sync packet with timestamp(-latency) " + syncPacket.getTimeStampMinusLatency() + " and local time " + localSecondsTime + " was " + syncAge + " seconds old");
 	}
 	
 	private void addDelta(double delta, double weight) {
