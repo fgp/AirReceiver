@@ -12,7 +12,6 @@ import javax.crypto.*;
 import javax.crypto.spec.*;
 
 import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
-import org.jboss.netty.buffer.ChannelBuffer;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.channel.group.*;
 import org.jboss.netty.channel.socket.nio.NioDatagramChannelFactory;
@@ -32,8 +31,6 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
 			throws Exception
 		{
-			RaopRtpPacket packet = (RaopRtpPacket)evt.getMessage();
-			
 			Channel audioChannel = null;
 			synchronized(RaopAudioHandler.this) {
 				if ((m_audioChannel != null) && m_audioChannel.isOpen() && m_audioChannel.isReadable())
@@ -107,6 +104,8 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			else {
 				s_logger.warning("No audio queue available, dropping packet");
 			}
+			
+			super.messageReceived(ctx, evt);
 		}
 	}
 	

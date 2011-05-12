@@ -7,7 +7,7 @@ import java.util.logging.Logger;
 
 import javax.sound.sampled.*;
 
-public class AudioOutputQueue {
+public class AudioOutputQueue implements AudioClock {
 	private static Logger s_logger = Logger.getLogger(AudioOutputQueue.class.getName());
 
 	private static final double QueueLengthMaxSeconds = 5;
@@ -20,6 +20,8 @@ public class AudioOutputQueue {
 	 * Never transitions from true to false!
 	 */
 	private volatile boolean m_closing = false;
+	
+	private final double m_localSecondsOffset = (double)0x83aa7e80L + (double)System.currentTimeMillis() / 1e3;
 
 	/**
 	 *  The line's audio format
@@ -111,7 +113,7 @@ public class AudioOutputQueue {
 							/* Get earliest packet from queue and compute playback time and gap */
 							final long nextPlaybackRemoteTime = m_queue.firstKey();
 							final long nextPlaybackFrameTime = fromRemoteFrameTime(nextPlaybackRemoteTime);
-							nextPlaybackTimeGap = nextPlaybackFrameTime - getEndFrameTime();
+							nextPlaybackTimeGap = nextPlaybackFrameTime - getEndLocalFrameTime();
 							
 							if (nextPlaybackTimeGap <= 0) {
 								/* No gap between packet and line end. Prepare packet for playback */
@@ -143,7 +145,7 @@ public class AudioOutputQueue {
 							(double)m_format.getSampleRate()),
 							nextPlaybackTimeGap
 						);
-						appendFrames(null, 0, 0, getEndFrameTime() + silenceFrames, true);
+						appendFrames(null, 0, 0, getEndLocalFrameTime() + silenceFrames, true);
 						if (nextPlaybackTimeGap < Long.MAX_VALUE) {
 							/* More packets queued */
 							s_logger.warning("Audio output line about to underrun since " + nextPlaybackTimeGap + " frames appear to be missing , appended " + silenceFrames + " frames of silence");
@@ -184,7 +186,7 @@ public class AudioOutputQueue {
 				/* Before we exit, we fill the line's buffer with silence. This should prevent
 				 * noise from being output while the line is being stopped
 				 */
-				appendFrames(null, 0, 0, getEndFrameTime() + m_line.available() / m_bytesPerFrame, true);
+				appendFrames(null, 0, 0, getEndLocalFrameTime() + m_line.available() / m_bytesPerFrame, true);
 			}
 			catch (Throwable e) {
 				s_logger.log(Level.SEVERE, "Audio output thread died unexpectedly", e);
@@ -209,7 +211,7 @@ public class AudioOutputQueue {
 
 			while (true) {
 				/* Fetch line end time only once per iteration */
-				long endFrameTime = getEndFrameTime();
+				long endFrameTime = getEndLocalFrameTime();
 				
 				if (endFrameTime == time) {
 					/* Samples to append scheduled exactly at line end. Just append them and be done */
@@ -287,7 +289,7 @@ public class AudioOutputQueue {
 				for(int b=0; b < m_bytesPerFrame; ++b)
 					m_lineLastFrame[b] = samples[off + len - (m_bytesPerFrame - b)];
 				
-				s_logger.finest("Audio output line end is now at " + getEndFrameTime() + " after writing " + len / m_bytesPerFrame + " frames");
+				s_logger.finest("Audio output line end is now at " + getEndLocalFrameTime() + " after writing " + len / m_bytesPerFrame + " frames");
 				
 				if (!isSilence) {
 					/* We've written non-silence frames. Unmute line */
@@ -417,7 +419,7 @@ public class AudioOutputQueue {
 		 * playback time and the current line time
 		 */
 		long playbackStartFrameTime = fromRemoteFrameTime(playbackRemoteStartFrameTime);
-		long playbackDelayFrames = playbackStartFrameTime + playbackSamples.length / m_bytesPerFrame - getNowFrameTime();
+		long playbackDelayFrames = playbackStartFrameTime + playbackSamples.length / m_bytesPerFrame - getNowLocalFrameTime();
 		
 		if (playbackDelayFrames < 0) {
 			/* The whole packet is scheduled to be played in the past */
@@ -453,14 +455,18 @@ public class AudioOutputQueue {
 		return remoteFrameTime - m_activeRemoteFrameTimeOffset;
 	}
 	
-	public synchronized void sync(long remoteFrameTime, long lineFrameTime, boolean reset) {
+	@Override
+	public synchronized void requestSyncRemoteFrameTime(long remoteFrameTime, double localSecondsTime, boolean force) {
+		/* Convert local seconds time to frame time */
+		final long localFrameTime = Math.round((localSecondsTime - getLocalSecondsOffset()) * m_format.getSampleRate());
+
 		/* Compute the requested offset and the adjustment we'd have to make to the
 		 * active offset
 		 */
-		m_requestedRemoteFrameTimeOffset = remoteFrameTime - lineFrameTime;
+		m_requestedRemoteFrameTimeOffset = remoteFrameTime - localFrameTime;
 		double requestedAdjustmentSeconds = (double)(m_requestedRemoteFrameTimeOffset - m_activeRemoteFrameTimeOffset) / m_format.getSampleRate();
 		
-		if ((Math.abs(requestedAdjustmentSeconds) > TimingPrecision) || reset) {
+		if ((Math.abs(requestedAdjustmentSeconds) > TimingPrecision) || force) {
 			/* We've either been forced to adjust the offset, or the timing is way off.
 			 * We've got no other chance than to adjust the active offset, even if this
 			 * probably produces an audible distortion
@@ -477,12 +483,33 @@ public class AudioOutputQueue {
 	}
 	
 	/**
+	 * Returns the offset of the local seconds time,
+	 * i.e. the local seconds time that corresponds
+	 * to the local frame time zero.
+	 */
+	@Override
+	public double getLocalSecondsOffset() {
+		return m_localSecondsOffset;
+	}
+
+	/**
 	 * Returns the current line frame time.
 	 * 
 	 * @return the current line frame time
 	 */
-	public synchronized long getNowFrameTime() {
+	public synchronized long getNowLocalFrameTime() {
 		return m_line.getLongFramePosition();
+	}
+	
+	/**
+	 * Returns the current line frame time in seconds.
+	 * Offsetted by the local seconds epoch to prevent
+	 * to make this monotonic even if the queue is
+	 * destroyed and re-created.
+	 */
+	@Override
+	public double getNowLocalSecondsTime() {
+		return getLocalSecondsOffset() + (double)getNowLocalFrameTime() / m_format.getSampleRate();
 	}
 	
 	/**
@@ -492,7 +519,7 @@ public class AudioOutputQueue {
 	 * 
 	 * @return line end frame time
 	 */
-	private synchronized long getEndFrameTime() {
+	private synchronized long getEndLocalFrameTime() {
 		return m_lineFramesWritten;
 	}
 	
@@ -502,6 +529,6 @@ public class AudioOutputQueue {
 	 * @return
 	 */
 	private synchronized double getBufferedSeconds() {
-		return (double)(getEndFrameTime() - getNowFrameTime()) / m_format.getSampleRate();
+		return (double)(getEndLocalFrameTime() - getNowLocalFrameTime()) / m_format.getSampleRate();
 	}
 }
