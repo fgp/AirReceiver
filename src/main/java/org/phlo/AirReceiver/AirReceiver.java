@@ -69,14 +69,38 @@ public class AirReceiver {
 			map.put(keys_values[i], keys_values[i+1]);
 		return Collections.unmodifiableMap(map);
 	}
+
+	public static boolean isBlockedHardwareAddress(final byte[] addr) {
+		if ((addr[0] & 0x02) != 0)
+			/* Locally administered */
+			return true;
+		else if ((addr[0] == 0x00) && (addr[1] == 0x50) && (addr[2] == 0x56))
+			/* VMware */
+			return true;
+		else if ((addr[0] == 0x00) && (addr[1] == 0x1C) && (addr[2] == 0x42))
+			/* Parallels */
+			return true;
+		else if ((addr[0] == 0x00) && (addr[1] == 0x25) && (addr[2] == (byte)0xAE))
+			/* Microsoft */
+			return true;
+		else
+			return false;
+	}
 	
 	private static byte[] getHardwareAddress() {
 		try {
 	    	for(NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
+	    		if (iface.isLoopback())
+	    			continue;
+	    		if (iface.isPointToPoint())
+	    			continue;
+
 	    		try {
 		    		final byte[] ifaceMacAddress = iface.getHardwareAddress();
-		    		if ((ifaceMacAddress != null) && (ifaceMacAddress.length > 0))
+		    		if ((ifaceMacAddress != null) && (ifaceMacAddress.length == 6) && !isBlockedHardwareAddress(ifaceMacAddress)) {
+		    			s_logger.info("Hardware address is " + toHexString(ifaceMacAddress) + " (" + iface.getDisplayName() + ")");
 		    	    	return Arrays.copyOfRange(ifaceMacAddress, 0, 6);
+		    		}
 	    		}
 	    		catch (Throwable e) {
 	    			/* Ignore */
@@ -88,12 +112,15 @@ public class AirReceiver {
 		}
 		
 		try {
-			return Arrays.copyOfRange(InetAddress.getLocalHost().getAddress(), 0, 6);
+			final byte[] hostAddress = Arrays.copyOfRange(InetAddress.getLocalHost().getAddress(), 0, 6);
+			s_logger.info("Hardware address is " + toHexString(hostAddress) + " (IP address)");
+			return hostAddress;
 		}
 		catch (Throwable e) {
 			/* Ignore */
 		}
-		
+
+		s_logger.info("Hardware address is 00DEADBEEF00 (last resort)");
 		return new byte[] {(byte)0x00, (byte)0xDE, (byte)0xAD, (byte)0xBE, (byte)0xEF, (byte)0x00};
 	}
 	
