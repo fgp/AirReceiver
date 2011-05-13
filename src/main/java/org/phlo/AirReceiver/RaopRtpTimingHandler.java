@@ -39,46 +39,45 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	}
 	
 	private final AudioClock m_audioClock;
-	private Thread m_synchronizationThread;
 	private final Deque<Double> m_deltaWeights = new java.util.LinkedList<Double>();
 	private final Deque<Double> m_deltaValues = new java.util.LinkedList<Double>();
 	private double m_delta = Double.NaN;
+	private Thread m_synchronizationThread;
 	
 	public RaopRtpTimingHandler(final AudioClock audioClock) {
 		m_audioClock = audioClock;
 	}
 	
 	@Override
-	public synchronized void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent evt)
+	public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent evt)
 		throws Exception
 	{
 		channelClosed(ctx, evt);
 		
-		m_synchronizationThread = new Thread(new TimingRequester(ctx.getChannel()));
-		m_synchronizationThread.setDaemon(true);
-		m_synchronizationThread.setName("Time Synchronizer");
-		m_synchronizationThread.start();
-		s_logger.fine("Time synchronizer started");
+		synchronized(this) {
+			m_synchronizationThread = new Thread(new TimingRequester(ctx.getChannel()));
+			m_synchronizationThread.setDaemon(true);
+			m_synchronizationThread.setName("Time Synchronizer");
+			m_synchronizationThread.start();
+			s_logger.fine("Time synchronizer started");
+		}
+		
+		super.channelOpen(ctx, evt);
 	}
 	
 
 	@Override
-	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent evt)
+	public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent evt)
 		throws Exception
 	{
-		if (m_synchronizationThread != null) {
-			while (m_synchronizationThread.isAlive()) {
+		synchronized(this) {
+			if (m_synchronizationThread != null)
 				m_synchronizationThread.interrupt();
-				try { Thread.sleep(10); }
-				catch (InterruptedException e) { /* Ignore */ }
-			}
-			m_synchronizationThread = null;
-			s_logger.fine("Time synchronizer stopped");
 		}
 	}
 
 	@Override
-	public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
 		throws Exception
 	{
 		if (evt.getMessage() instanceof RaopRtpPacket.Sync)
@@ -89,7 +88,7 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 		super.messageReceived(ctx, evt);
 	}
 
-	private void timingResponseReceived(RaopRtpPacket.TimingResponse timingResponsePacket) {
+	private synchronized void timingResponseReceived(RaopRtpPacket.TimingResponse timingResponsePacket) {
 		final double localSecondsTime = 
 			m_audioClock.getNowLocalSecondsTime() * 0.5 +
 			timingResponsePacket.getReferenceTime().getDouble() * 0.5;
@@ -111,7 +110,7 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 		s_logger.fine("Timing response indicated delta " + delta + " and had transmission time " + transmissionTime + ", weighting with " + weight);
 	}
 
-	private void syncReceived(RaopRtpPacket.Sync syncPacket) {
+	private synchronized void syncReceived(RaopRtpPacket.Sync syncPacket) {
 		double localSecondsTime = fromRemoteSecondsTime(syncPacket.getTime().getDouble());
 		if (Double.isNaN(localSecondsTime))
 			localSecondsTime = m_audioClock.getNowLocalSecondsTime();		

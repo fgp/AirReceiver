@@ -99,7 +99,7 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 	}
 			
 	@Override
-	public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
 		throws Exception
 	{
 		RaopRtpPacket packet = (RaopRtpPacket)evt.getMessage();
@@ -112,11 +112,11 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		super.messageReceived(ctx, evt);
 	}
 
-	private void audioRetransmitReceived(ChannelHandlerContext ctx, RaopRtpPacket.AudioRetransmit audioPacket) {
+	private synchronized void audioRetransmitReceived(ChannelHandlerContext ctx, RaopRtpPacket.AudioRetransmit audioPacket) {
 		markRetransmitted(audioPacket.getOriginalSequence());
 	}
 	
-	private void audioTransmitReceived(ChannelHandlerContext ctx, RaopRtpPacket.AudioTransmit audioPacket) {
+	private synchronized void audioTransmitReceived(ChannelHandlerContext ctx, RaopRtpPacket.AudioTransmit audioPacket) {
 		markRetransmitted(audioPacket.getSequence());
 
 		if (m_lastSequence < 0)

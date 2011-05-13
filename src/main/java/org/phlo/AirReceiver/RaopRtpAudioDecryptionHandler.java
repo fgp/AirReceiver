@@ -4,12 +4,11 @@ import javax.crypto.Cipher;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.IvParameterSpec;
 
-import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.buffer.*;
+import org.jboss.netty.channel.*;
+import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
 
-public class RaopRtpAudioDecryptionHandler extends SimpleChannelUpstreamHandler {
+public class RaopRtpAudioDecryptionHandler extends OneToOneDecoder {
 	private final Cipher m_aesCipher = AirTunesKeys.getCipher("AES/CBC/NoPadding", "BC");
 	private final SecretKey m_aesKey;
 	private final IvParameterSpec m_aesIv;
@@ -20,22 +19,24 @@ public class RaopRtpAudioDecryptionHandler extends SimpleChannelUpstreamHandler 
 	}
 	
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+	protected synchronized Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
 		throws Exception
 	{
-		if (evt.getMessage() instanceof RaopRtpPacket.Audio) {
-			RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)evt.getMessage();
+		if (msg instanceof RaopRtpPacket.Audio) {
+			RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)msg;
 			ChannelBuffer audioPayload = audioPacket.getPayload();
 			
-			m_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
-			for(int i=0; (i + 16) <= audioPayload.capacity(); i += 16) {
-				byte[] block = new byte[16];
-				audioPayload.getBytes(i, block);
-				block = m_aesCipher.update(block);
-				audioPayload.setBytes(i, block);
+			synchronized(this) {
+				m_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
+				for(int i=0; (i + 16) <= audioPayload.capacity(); i += 16) {
+					byte[] block = new byte[16];
+					audioPayload.getBytes(i, block);
+					block = m_aesCipher.update(block);
+					audioPayload.setBytes(i, block);
+				}
 			}
 		}
 		
-		super.messageReceived(ctx, evt);
+		return msg;
 	}
 }

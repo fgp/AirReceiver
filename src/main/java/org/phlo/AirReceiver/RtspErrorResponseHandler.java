@@ -17,16 +17,20 @@ public class RtspErrorResponseHandler extends SimpleChannelHandler {
 	
 	@Override
     public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
-		m_messageTriggeredException = false;
+		synchronized(this) {
+			m_messageTriggeredException = false;
+		}
 		
 		super.messageReceived(ctx, evt);
     }
 	
 	@Override
 	public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent evt) throws Exception {
-		if (m_messageTriggeredException)
-			return;
-		m_messageTriggeredException = true;
+		synchronized(this) {
+			if (m_messageTriggeredException)
+				return;
+			m_messageTriggeredException = true;
+		}
 		
 		if (ctx.getChannel().isConnected()) {
 			HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.INTERNAL_SERVER_ERROR);

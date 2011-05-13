@@ -71,7 +71,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	}
 	
 	@Override
-	protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
+	protected synchronized Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
 		throws Exception
 	{
 		if (!(msg instanceof RaopRtpPacket.Audio))

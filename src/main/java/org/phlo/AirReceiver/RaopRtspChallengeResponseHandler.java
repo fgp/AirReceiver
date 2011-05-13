@@ -31,24 +31,26 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 	{
 		final HttpRequest req = (HttpRequest)evt.getMessage();
 
-		if (req.containsHeader(HeaderChallenge)) {
-			/* The challenge is sent without padding! */
-			final byte[] challenge = Base64.decodeUnpadded(req.getHeader(HeaderChallenge));
-			
-			/* Verify that we got 16 bytes */
-			if (challenge.length != 16)
-				throw new ProtocolException("Invalid Apple-Challenge header, " + challenge.length + " instead of 16 bytes");
-			
-			/* Remember challenge and local address.
-			 * Both are required to compute the response
-			 */
-			m_challenge = challenge;
-			m_localAddress = ((InetSocketAddress)ctx.getChannel().getLocalAddress()).getAddress();
-		}
-		else {
-			/* Forget last challenge */
-			m_challenge = null;
-			m_localAddress = null;
+		synchronized(this) {
+			if (req.containsHeader(HeaderChallenge)) {
+				/* The challenge is sent without padding! */
+				final byte[] challenge = Base64.decodeUnpadded(req.getHeader(HeaderChallenge));
+				
+				/* Verify that we got 16 bytes */
+				if (challenge.length != 16)
+					throw new ProtocolException("Invalid Apple-Challenge header, " + challenge.length + " instead of 16 bytes");
+				
+				/* Remember challenge and local address.
+				 * Both are required to compute the response
+				 */
+				m_challenge = challenge;
+				m_localAddress = ((InetSocketAddress)ctx.getChannel().getLocalAddress()).getAddress();
+			}
+			else {
+				/* Forget last challenge */
+				m_challenge = null;
+				m_localAddress = null;
+			}
 		}
 		
 		super.messageReceived(ctx, evt);
@@ -60,13 +62,15 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 	{
 		final HttpResponse resp = (HttpResponse)evt.getMessage();
 		
-		if (m_challenge != null) {
-			/* Get appropriate response to challenge and
-			 * add to the response base-64 encoded. XXX
-			 */
-			String sig = Base64.encodePadded(getSignature());
-			
-			resp.setHeader(HeaderSignature, sig);
+		synchronized(this) {
+			if (m_challenge != null) {
+				/* Get appropriate response to challenge and
+				 * add to the response base-64 encoded. XXX
+				 */
+				String sig = Base64.encodePadded(getSignature());
+				
+				resp.setHeader(HeaderSignature, sig);
+			}
 		}
 		
 		super.writeRequested(ctx, evt);

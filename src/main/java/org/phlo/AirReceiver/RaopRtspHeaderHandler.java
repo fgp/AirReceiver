@@ -17,11 +17,13 @@ public class RaopRtspHeaderHandler extends SimpleChannelHandler
 	{
 		final HttpRequest req = (HttpRequest)evt.getMessage();
 
-		if (req.containsHeader(HeaderCSeq)) {
-			m_cseq = req.getHeader(HeaderCSeq);
-		}
-		else {
-			throw new ProtocolException("No CSeq header");
+		synchronized(this) {
+			if (req.containsHeader(HeaderCSeq)) {
+				m_cseq = req.getHeader(HeaderCSeq);
+			}
+			else {
+				throw new ProtocolException("No CSeq header");
+			}
 		}
 		
 		super.messageReceived(ctx, evt);
@@ -33,10 +35,12 @@ public class RaopRtspHeaderHandler extends SimpleChannelHandler
 	{
 		final HttpResponse resp = (HttpResponse)evt.getMessage();
 		
-		if (m_cseq != null)
-			resp.setHeader(HeaderCSeq, m_cseq);
-		
-		resp.setHeader(HeaderAudioJackStatus, HeaderAudioJackStatusDefault);
+		synchronized(this) {
+			if (m_cseq != null)
+				resp.setHeader(HeaderCSeq, m_cseq);
+			
+			resp.setHeader(HeaderAudioJackStatus, HeaderAudioJackStatusDefault);
+		}
 		
 		super.writeRequested(ctx, evt);
 	}

@@ -28,16 +28,15 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 
 	private class RaopRtpInputToAudioRouterUpstreamHandler extends SimpleChannelUpstreamHandler {
 		@Override
-		public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+		public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
 			throws Exception
 		{
 			Channel audioChannel = null;
 			synchronized(RaopAudioHandler.this) {
-				if ((m_audioChannel != null) && m_audioChannel.isOpen() && m_audioChannel.isReadable())
-					audioChannel = m_audioChannel;
+				audioChannel = m_audioChannel;
 			}
 			
-			if (audioChannel != null) {
+			if ((m_audioChannel != null) && m_audioChannel.isOpen() && m_audioChannel.isReadable()) {
 				audioChannel.getPipeline().sendUpstream(new UpstreamMessageEvent(
 					audioChannel,
 					evt.getMessage(),
@@ -57,18 +56,16 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 			Channel controlChannel = null;
 			Channel timingChannel = null;
 			synchronized(RaopAudioHandler.this) {
-				if ((m_controlChannel != null) && m_controlChannel.isOpen() && m_controlChannel.isWritable())
-					controlChannel = m_controlChannel;
-				if ((m_timingChannel != null) && m_timingChannel.isOpen() && m_timingChannel.isWritable())
-					timingChannel = m_timingChannel;
+				controlChannel = m_controlChannel;
+				timingChannel = m_timingChannel;
 			}
 			
 			if (packet instanceof RaopRtpPacket.RetransmitRequest) {
-				if (controlChannel != null)
+				if ((controlChannel != null) && controlChannel.isOpen() && controlChannel.isWritable())
 					controlChannel.write(evt.getMessage());
 			}
 			else if (packet instanceof RaopRtpPacket.TimingRequest) {
-				if (timingChannel != null)
+				if ((timingChannel != null) && timingChannel.isOpen() && timingChannel.isWritable())
 					timingChannel.write(evt.getMessage());
 			}
 			else {
@@ -142,7 +139,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		if (m_audioOutputQueue != null)
 			m_audioOutputQueue.close();
 
-		m_rtpChannels.close().awaitUninterruptibly();
+		m_rtpChannels.close();
 
 		m_decryptionHandler = null;
 		m_audioDecodeHandler = null;
@@ -158,15 +155,20 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	}
 	
 	@Override
-	public synchronized void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e)
+	public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent evt)
 		throws Exception
 	{
 		s_logger.info("RTSP connection was shut down, closing RTP channels and audio output queue");
-		reset();
+		
+		synchronized(this) {
+			reset();
+		}
+		
+		super.channelClosed(ctx, evt);
 	}
 	
 	@Override
-	public synchronized void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
+	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
 		HttpRequest req = (HttpRequest)evt.getMessage();
 		HttpMethod method = req.getMethod();
 		
@@ -206,7 +208,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private static Pattern s_pattern_sdp_m = Pattern.compile("^audio ([^ ]+) RTP/AVP ([0-9]+)$");
 	private static Pattern s_pattern_sdp_a = Pattern.compile("^([a-z]+):(.*)$");
 	private static Pattern s_pattern_sdp_a_rtpmap = Pattern.compile("^([0-9]+) (.*)$");
-	public void announceReceived(ChannelHandlerContext ctx, HttpRequest req)
+	public synchronized void announceReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws Exception
 	{
 		if (!req.containsHeader("Content-Type"))
@@ -307,7 +309,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	}
 	
 	private static Pattern s_pattern_transportOption = Pattern.compile("^([A-Za-z0-9_-]+)(=(.*))?$");
-	public void setupReceived(ChannelHandlerContext ctx, HttpRequest req)
+	public synchronized void setupReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws ProtocolException
 	{
 		if (!req.containsHeader(HeaderTransport))
@@ -388,7 +390,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		
 	}
 
-	public void recordReceived(ChannelHandlerContext ctx, HttpRequest req)
+	public synchronized void recordReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws Exception
 	{
 		if (m_audioStreamInformationProvider == null)
@@ -400,7 +402,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		ctx.getChannel().write(response);
 	}
 	
-	private void flushReceived(ChannelHandlerContext ctx, HttpRequest req) {
+	private synchronized void flushReceived(ChannelHandlerContext ctx, HttpRequest req) {
 		if (m_audioOutputQueue != null)
 			m_audioOutputQueue.flush();
 
@@ -410,7 +412,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		ctx.getChannel().write(response);
 	}
 
-	private void teardownReceived(ChannelHandlerContext ctx, HttpRequest req) {
+	private synchronized void teardownReceived(ChannelHandlerContext ctx, HttpRequest req) {
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
 		ctx.getChannel().setReadable(false);
 		ctx.getChannel().write(response).addListener(new ChannelFutureListener() {
@@ -422,7 +424,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		});
 	}
 
-	public void setParameterReceived(ChannelHandlerContext ctx, HttpRequest req)
+	public synchronized void setParameterReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws ProtocolException
 	{
 		// XXX Implement!
@@ -431,7 +433,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		ctx.getChannel().write(response);
 	}
 	
-	public void getParameterReceived(ChannelHandlerContext ctx, HttpRequest req)
+	public synchronized void getParameterReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws ProtocolException
 	{
 		// XXX Implement!
