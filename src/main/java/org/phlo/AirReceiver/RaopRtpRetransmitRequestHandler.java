@@ -10,10 +10,10 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpRetransmitRequestHandler.class.getName());
 
-	private static final double RetransmitRequestsLimitSeconds = 0.1;
+	private static final double RetransmitRequestsLimitSeconds = 1.0;
 	private static final double DuplicateDetectThresholdSeconds = 5;
-	private static final double RetransmitTimeoutSeconds = 0.5;
-	private static final int RetransmitAttempts = 2;
+	private static final double RetransmitTimeoutSeconds = 0.3;
+	private static final int RetransmitAttempts = 3;
 	
 	private static class MissingPacket {
 		public int sequence;
@@ -66,19 +66,17 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 
 			if (missingPacket.retransmitRequestedNanoTime > nowNanoTime - RetransmitTimeoutSeconds*1e9)
 				continue;
+			if (missingPacket.retransmitRequestCount >= RetransmitAttempts) {
+				continue;
+			}
 			
 			missingPacket.retransmitRequestedNanoTime = nowNanoTime;
 			++missingPacket.retransmitRequestCount;
-			if (missingPacket.retransmitRequestCount > 1)
-				s_logger.fine("Packet retransmit timed out, re-requesting retransmit of " + missingPacket.sequence);
-			if (missingPacket.retransmitRequestCount >= RetransmitAttempts) {
-				s_logger.fine("Packet retransmit request limit reached, last request for retransmit of " + missingPacket.sequence);
-				missingPacketIterator.remove();
-			}
+			s_logger.fine("Packet " + missingPacket.sequence + " still missing after " + missingPacket.retransmitRequestCount + " retransmit requests, sending another one");
 
 			if (
 				(retransmitRequest != null) &&
-				((retransmitRequest.getSequence() + retransmitRequest.getSequenceCount()) % 0x10000 != missingPacket.sequence)
+				(((retransmitRequest.getSequence() + retransmitRequest.getSequenceCount()) % 0x10000) != missingPacket.sequence)
 			) {
 				if (ctx.getChannel().isOpen())
 					ctx.getChannel().write(retransmitRequest);
