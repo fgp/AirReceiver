@@ -13,7 +13,7 @@ public class RaopRtspPipelineFactory implements ChannelPipelineFactory {
 		pipeline.addLast("decoder", new RtspRequestDecoder());
 		pipeline.addLast("encoder", new RtspResponseEncoder());
 		pipeline.addLast("logger", new RtspLoggingHandler());
-		pipeline.addLast("challengeResponse", new RaopRtspChallengeResponseHandler(new byte[] {(byte)0x00, (byte)0xDE, (byte)0xAD, (byte)0xBE, (byte)0xEF, (byte)0x00}));
+		pipeline.addLast("challengeResponse", new RaopRtspChallengeResponseHandler(AirReceiver.HardwareAddressBytes));
 		pipeline.addLast("errorResponse", new RtspErrorResponseHandler());
 		pipeline.addLast("header", new RaopRtspHeaderHandler());
 		pipeline.addLast("options", new RaopRtspOptionsHandler());

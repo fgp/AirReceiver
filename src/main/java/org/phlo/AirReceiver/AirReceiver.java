@@ -3,6 +3,7 @@ package org.phlo.AirReceiver;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.*;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.List;
@@ -22,10 +23,17 @@ import org.jboss.netty.channel.socket.nio.*;
 public class AirReceiver {
 	private static final Logger s_logger = Logger.getLogger(RtspUnsupportedResponseHandler.class.getName());
 
-	private static final String AirtunesServiceNamePrefix = "00DEADBEEF00@";
-	private static final String AirtunesServiceType = "_raop._tcp.local.";
-	private static final short AirtunesServiceRTSPPort = 5000;
-	private static final Map<String, String> AirtunesServiceProperties = map(
+	public static final byte[] HardwareAddressBytes = getHardwareAddress();
+
+	public static final String HardwareAddressString = toHexString(HardwareAddressBytes);
+
+	public static final String HostName = getHostName();
+	
+	public static final String AirtunesServiceType = "_raop._tcp.local.";
+
+	public static final short AirtunesServiceRTSPPort = 5000;
+
+	public static final Map<String, String> AirtunesServiceProperties = map(
 		"txtvers", "1",
 		"tp", "UDP",
 		"ch", "2",
@@ -51,6 +59,7 @@ public class AirReceiver {
 	};
 	
 	private static final List<JmDNS> s_jmDNSInstances = new java.util.LinkedList<JmDNS>();
+
 	private static ChannelGroup s_allChannels = new DefaultChannelGroup();
 		
 	private static Map<String, String> map(String... keys_values) {
@@ -59,6 +68,51 @@ public class AirReceiver {
 		for(int i=0; i < keys_values.length; i+=2)
 			map.put(keys_values[i], keys_values[i+1]);
 		return Collections.unmodifiableMap(map);
+	}
+	
+	private static byte[] getHardwareAddress() {
+		try {
+	    	for(NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
+	    		try {
+		    		final byte[] ifaceMacAddress = iface.getHardwareAddress();
+		    		if ((ifaceMacAddress != null) && (ifaceMacAddress.length > 0))
+		    	    	return Arrays.copyOfRange(ifaceMacAddress, 0, 6);
+	    		}
+	    		catch (Throwable e) {
+	    			/* Ignore */
+	    		}
+	    	}
+		}
+		catch (Throwable e) {
+			/* Ignore */
+		}
+		
+		try {
+			return Arrays.copyOfRange(InetAddress.getLocalHost().getAddress(), 0, 6);
+		}
+		catch (Throwable e) {
+			/* Ignore */
+		}
+		
+		return new byte[] {(byte)0x00, (byte)0xDE, (byte)0xAD, (byte)0xBE, (byte)0xEF, (byte)0x00};
+	}
+	
+	private static String getHostName() {
+		try {
+			return InetAddress.getLocalHost().getHostName().split("\\.")[0];
+		}
+		catch (Throwable e) {
+			return "AirReceiver";
+		}
+	}
+	
+	private static String toHexString(byte[] bytes) {
+		StringBuilder s = new StringBuilder();
+		for(byte b: bytes) {
+			String h = Integer.toHexString(0x100 | b);
+			s.append(h.substring(h.length() - 2, h.length()).toUpperCase());
+		}
+		return s.toString();
 	}
 	
 	public static void onShutdown() {
@@ -109,9 +163,6 @@ public class AirReceiver {
         popupMenu.add(exitMenuItem);
         trayIcon.setPopupMenu(popupMenu);
         SystemTray.getSystemTray().add(trayIcon);
-    	
-        /* Get host name */
-        final String hostName = InetAddress.getLocalHost().getHostName().split("\\.")[0];
         
         /* Create AirTunes RTSP pipeline factory.
          * NOTE: We immediatly create a test channel. This isn't necessary,
@@ -146,13 +197,13 @@ public class AirReceiver {
     			
 				try {
 					/* Create mDNS responder for address */
-			    	final JmDNS jmDNS = JmDNS.create(addr, hostName);
+			    	final JmDNS jmDNS = JmDNS.create(addr, HostName);
 			    	s_jmDNSInstances.add(jmDNS);
 
 			        /* Publish RAOP service */
 			        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
 			    		AirtunesServiceType,
-			    		AirtunesServiceNamePrefix + hostName,
+			    		HardwareAddressString + "@" + HostName,
 			    		AirtunesServiceRTSPPort,
 			    		0 /* weight */, 0 /* priority */,
 			    		AirtunesServiceProperties
