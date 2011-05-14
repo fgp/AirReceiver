@@ -396,7 +396,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		if (m_audioStreamInformationProvider == null)
 			throw new ProtocolException("Audio stream not configured, cannot start recording");
 			
-		s_logger.info("Client initiated streaming, created audio output queue");
+		s_logger.info("Client started streaming");
 		
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
 		ctx.getChannel().write(response);
