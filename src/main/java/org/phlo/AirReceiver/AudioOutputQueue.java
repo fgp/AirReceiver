@@ -11,6 +11,7 @@ public class AudioOutputQueue implements AudioClock {
 	private static Logger s_logger = Logger.getLogger(AudioOutputQueue.class.getName());
 
 	private static final double QueueLengthMaxSeconds = 5;
+	private static final double MuteThresholdSeconds = 0.5;
 	private static final double BufferSizeSeconds = 0.05;
 	private static final double TimingPrecision = 0.1;
 
@@ -43,6 +44,13 @@ public class AudioOutputQueue implements AudioClock {
 	 * Sample rate
 	 */
 	private final double m_sampleRate;
+	
+	/**
+	 * Average packet size in frames.
+	 * We use this as the number of silence frames
+	 * to write on a queue underrun
+	 */
+	private final int m_packetSizeFrames;
 	
 	/**
 	 * JavaSounds audio output line
@@ -101,29 +109,32 @@ public class AudioOutputQueue implements AudioClock {
 				/* Start the line */
 				m_line.start();
 				
-				boolean playing = false;
+				boolean lineMuted = true;
+				boolean didWarnGap = false;
 				while (!m_closing) {
-					final long writableFrames = Math.min(m_line.getBufferSize(), m_line.available()) / m_bytesPerFrame;
-					
-					/* If the gap between the next packet and the end of line is
-					 * negligible (fits into the line buffer), we write it to the line.
-					 * Otherwise, we fill the line buffer with silence and hope for
-					 * further packets to appear in the queue
-					 */
 					if (!m_queue.isEmpty()) {
-						/* Get earliest packet from queue and compute playback time and gap */
+						/* Queue filled */
+						
+						/* If the gap between the next packet and the end of line is
+						 * negligible (fits into the line buffer), we write it to the line.
+						 * Otherwise, we fill the line buffer with silence and hope for
+						 * further packets to appear in the queue
+						 */
 						final long entryRemoteTime = m_queue.firstKey();
 						final long entryFrameTime = fromRemoteFrameTime(entryRemoteTime);
 						final long gapFrames = entryFrameTime - getEndLocalFrameTime();
-						
-						if (gapFrames <= writableFrames) {
-							if (!playing) {
-								playing = true;
+						if (gapFrames < m_packetSizeFrames) {
+							/* Negligible gap between packet and line end. Prepare packet for playback */
+							didWarnGap = false;
+							
+							/* Unmute line in case it was muted previously */
+							if (lineMuted) {
+								lineMuted = false;
 								setLineGain(m_requestedGain);
-								s_logger.fine("Audio playback resumed, un-muted line");
+								s_logger.info("Audio data available, un-muted line");
 							}
 							
-							/* Negligible gap between packet and line end. Prepare packet for playback */
+							/* Get sample data and do sanity checks */
 							final byte[] nextPlaybackSamples = m_queue.remove(entryRemoteTime);
 							int nextPlaybackSamplesLength = nextPlaybackSamples.length;
 							if (nextPlaybackSamplesLength % m_bytesPerFrame != 0) {
@@ -136,16 +147,26 @@ public class AudioOutputQueue implements AudioClock {
 							appendFrames(nextPlaybackSamples, 0, nextPlaybackSamplesLength, entryFrameTime, false);
 							continue;
 						}
+						else {
+							/* Gap between packet and line end. Warn */
+							
+							if (!didWarnGap) {
+								didWarnGap = true;
+								s_logger.warning("Audio data missing for frame time " + getEndLocalFrameTime() + " (currently " + gapFrames + " frames), writing " + m_packetSizeFrames + " frames of silence");							
+							}
+						}
+					}
+					else {
+						/* Queue empty */
+						
+						if (!lineMuted) {
+							lineMuted = true;
+							setLineGain(Float.NEGATIVE_INFINITY);
+							s_logger.info("Audio data ended at frame time " + getEndLocalFrameTime() + ", writing " + m_packetSizeFrames + " frames of silence and muted line");
+						}
 					}
 					
-					if (playing) {
-						playing = false;
-						setLineGain(Float.NEGATIVE_INFINITY);
-						s_logger.warning("Audio data missing starting with frame time " + getEndLocalFrameTime() + ", writing " + writableFrames + " frames of silence and muted line");
-					}
-					
-					appendFrames(null, 0, 0, getEndLocalFrameTime() + writableFrames, false);
-					s_logger.finest("Audio data missing for frame time " + getEndLocalFrameTime() + ", wrote " + writableFrames + " frames of silence");
+					appendFrames(null, 0, 0, getEndLocalFrameTime() + m_packetSizeFrames, false);
 				}
 				
 				/* Before we exit, we fill the line's buffer with silence. This should prevent
@@ -287,6 +308,7 @@ public class AudioOutputQueue implements AudioClock {
 		}
 		
 		/* Audio format-dependent stuff */
+		m_packetSizeFrames = streamInfoProvider.getFramesPerPacket();
 		m_bytesPerFrame = m_format.getChannels() * m_format.getSampleSizeInBits() / 8;
 		m_sampleRate = m_format.getSampleRate();
 		m_lineLastFrame = new byte[m_bytesPerFrame];
@@ -304,12 +326,15 @@ public class AudioOutputQueue implements AudioClock {
 		m_line.open(m_format, desiredBufferSize);
 		s_logger.info("Audio output line created and openend. Requested buffer of " + desiredBufferSize / m_bytesPerFrame  + " frames, got " + m_line.getBufferSize() / m_bytesPerFrame + " frames");
 		
-		/* Start enqueuer thread and wait for it to start the line */
+		/* Start enqueuer thread and wait for the line to start.
+		 * The wait guarantees that the AudioClock functions return
+		 * sensible values right after construction
+		 */
 		m_queueThread.setDaemon(true);
 		m_queueThread.setName("Audio Enqueuer");
 		m_queueThread.setPriority(Thread.MAX_PRIORITY);
 		m_queueThread.start();
-		while (!m_line.isActive()) {
+		while (getNowLocalFrameTime() == 0) {
 			try { Thread.sleep(10); }
 			catch (InterruptedException e) { /* Ignore */ }
 		}
