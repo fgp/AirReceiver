@@ -1,0 +1,77 @@
+AirReceiver
+===========
+Florian G. Pflug <fgp [at] phlo.org>
+May 2011
+
+Overview
+--------
+AirReceiver is an AirPort Express emulator, i.e. it allows streaming audio
+from iTunes and iOS devices to a computer running AirReceiver. It does so by
+implementing a RAOP/AirTunes2 server.
+
+Features
+--------
+AirReceiver is compatible with iTunes and iPhones/iPods. It implements not
+only raw audio streaming but also the timing-related parts of RAOP/Airtunes2.
+
+Usage
+-----
+Download and launch the application from the bin/ folder and lauch it. Give
+it a minute or so to announce it's service, and choose the computer running
+AirReceiver as output device in iTunes or iOS.
+
+iTunes adds an icon in the bottom right corner once it has detected a
+compatible device, iOS shows the icon next to the previous, pause, next
+buttons.
+
+Installation
+------------
+An Mac OS X compatible application can be found in the bin/ folder. Releases
+for other platforms are forthcoming.
+
+License
+-------
+AirReceiver is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+AirReceiver is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with AirReceiver.  If not, see <http://www.gnu.org/licenses/>.
+
+AirReceiver contains code written by soiaf, check the file license.txt
+in src/main/java/com/beatofthedrum/alacdecoder
+
+References & Acknowledgements
+-----------------------------
+* ShairPort written by James Laird
+  http://mafipulation.org/blagoblig/reversing, https://github.com/albertz/shairport
+  AirReceiver wouldn't haven been possible to write without the work James Laird
+  put into reverse-engineering the protocol and encryption.
+  
+* ALAC Decoder written David Hammerton and ported to Java by soiaf
+  https://github.com/soiaf/Java-Apple-Lossless-decoder
+ 
+* Netty by the JBoss Community
+  http://www.jboss.org/netty
+  Netty makes writing network server in Java pure joy. Writing the RTSP server
+  component was a breeze with netty's built-in support for HTTP and RTSP.
+  
+* BouncyCastle Java Cryptography Provider
+  http://www.bouncycastle.org/
+  BouncyCastle included all of the RSA and AES variants used by RAOP/AirTunes2
+  
+* Base64 Encoder/Decoder by iharder
+  http://iharder.sourceforge.net/current/java/base64/
+  iharder's Base64 decode saved me a few hours it'd otherwise probably have spent
+  writing and debugging an base64 encoder/decoder myself.
+
+* OneJar packaging plugin for maven
+  http://one-jar.sourceforge.net/
+  Add a few lines to your .pom and, there, you've built a Mac OS X application
+  bundle from your Java application. Cool!

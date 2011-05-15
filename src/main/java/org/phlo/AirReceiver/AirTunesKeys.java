@@ -1,3 +1,20 @@
+/*
+ * This file is part of AirReceiver.
+ * 
+ * AirReceiver is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * AirReceiver is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with AirReceiver.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.phlo.AirReceiver;
 
 import java.security.KeyFactory;
@@ -11,7 +28,6 @@ public class AirTunesKeys {
 		/* PEM-encoded PKCS#8 format.
 		 * Original Key from shairport was in PEM-encoded PKCS#1 format
 		 */
-//		"-----BEGIN PRIVATE KEY-----\n" +
 		"MIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDn10TyouJ4i2wf\n" +
 		"VaCOtwVEqPp5RaqL5sYs5fUcvdTcaEL+PRCD3S7ewb/UJS3ALm85i98OYUjqhIVe\n" +
 		"LkQtptYmZPZ0ofMEkpreT2iT7y325xGox3oNkcnZgIIuUNEpIq/qQOqfDhTA92k4\n" +
@@ -38,7 +54,6 @@ public class AirTunesKeys {
 		"D16bSAgsC4Tg+7XdoqImd9+3uEiNsr7mTJvdPKxm+jIOdvcc4q8icru9dsq5TghK\n" +
 		"DEHZsHcdxjNAwazPWonaAbQ3mG8mnPDCFuFeoUoDjNppKvDrbbAOeIArkyUgTS0g\n" +
 		"Aoo/jLE0aOgPZBiOEEa6G+RYpg==\n" +
-//		"-----END PRIVATE KEY-----" +
 		"";
 	public static final RSAPrivateKey PrivateKey = rsaPrivateKeyDecode(PrivateKeyData);
 	
