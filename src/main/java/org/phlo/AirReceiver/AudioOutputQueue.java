@@ -108,9 +108,6 @@ public class AudioOutputQueue implements AudioClock {
 				/* Mute line initially to prevent clicks */
 				setLineGain(Float.NEGATIVE_INFINITY);
 
-				/* Enqueue some silence */
-				appendSilence(m_line.available() / m_bytesPerFrame);
-				
 				/* Start the line */
 				m_line.start();
 				
@@ -137,6 +134,9 @@ public class AudioOutputQueue implements AudioClock {
 								lineMuted = false;
 								applyGain();
 								s_logger.info("Audio data available, un-muted line");
+							}
+							else if (getLineGain() != m_requestedGain) {
+								applyGain();
 							}
 							
 							/* Get sample data and do sanity checks */
@@ -369,7 +369,22 @@ public class AudioOutputQueue implements AudioClock {
 		else
 			s_logger.severe("Audio output line doesn not support volume control");
 	}
-	
+
+	/**
+	 * Returns the line's MASTER_GAIN control's value.
+	 */
+	private float getLineGain() {
+		if (m_line.isControlSupported(FloatControl.Type.MASTER_GAIN)) {
+			/* Bound gain value by min and max declared by the control */
+			FloatControl gainControl = (FloatControl)m_line.getControl(FloatControl.Type.MASTER_GAIN);
+			return gainControl.getValue();
+		}
+		else {
+			s_logger.severe("Audio output line doesn not support volume control");
+			return 0.0f;
+		}
+	}
+
 	private synchronized void applyGain() {
 		setLineGain(m_requestedGain);
 	}

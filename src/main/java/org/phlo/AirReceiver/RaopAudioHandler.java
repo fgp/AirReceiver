@@ -12,6 +12,7 @@ import javax.crypto.*;
 import javax.crypto.spec.*;
 
 import org.jboss.netty.bootstrap.ConnectionlessBootstrap;
+import org.jboss.netty.buffer.ChannelBuffers;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.channel.group.*;
 import org.jboss.netty.channel.socket.nio.NioDatagramChannelFactory;
@@ -424,10 +425,31 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		});
 	}
 
+	private static Pattern s_pattern_parameter = Pattern.compile("^([A-Za-z0-9_-]+): *(.*)$");
 	public synchronized void setParameterReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws ProtocolException
 	{
-		// XXX Implement!
+		final String body = req.getContent().toString(Charset.forName("ASCII")).replace("\r", "");
+
+		for(final String line: body.split("\n")) {
+			try {
+				final Matcher m_parameter = s_pattern_parameter.matcher(line);
+				if (!m_parameter.matches())
+					throw new ProtocolException("Cannot parse line " + line);
+				
+				final String name = m_parameter.group(1);
+				final String value = m_parameter.group(2);
+				
+				if ("volume".equals(name)) {
+					if (m_audioOutputQueue != null)
+						m_audioOutputQueue.setGain(Float.parseFloat(value));
+					
+				}
+			}
+			catch (Throwable e) {
+				throw new ProtocolException("Unable to parse line " + line);
+			}
+		}
 		
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
 		ctx.getChannel().write(response);
@@ -436,9 +458,16 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	public synchronized void getParameterReceived(ChannelHandlerContext ctx, HttpRequest req)
 		throws ProtocolException
 	{
-		// XXX Implement!
-
+		StringBuilder body = new StringBuilder();
+		
+		if (m_audioOutputQueue != null) {
+			body.append("volume: ");
+			body.append(m_audioOutputQueue.getGain());
+			body.append("\r\n");
+		}
+			
 		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.OK);
+		response.setContent(ChannelBuffers.wrappedBuffer(body.toString().getBytes(Charset.forName("ASCII"))));
 		ctx.getChannel().write(response);
 	}
 

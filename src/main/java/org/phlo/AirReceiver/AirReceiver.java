@@ -203,14 +203,13 @@ public class AirReceiver {
 		airTunesRtspBootstrap.setPipelineFactory(airTunesRtspPipelineFactory);
 		airTunesRtspBootstrap.setOption("reuseAddress", true);
 		airTunesRtspBootstrap.setOption("child.tcpNoDelay", true);
-		airTunesRtspBootstrap.setOption("child.keepAlive", false);
+		airTunesRtspBootstrap.setOption("child.keepAlive", true);
 		s_allChannels.add(airTunesRtspBootstrap.bind(new InetSocketAddress(Inet4Address.getByName("0.0.0.0"), AirtunesServiceRTSPPort)));
         s_logger.info("Launched RTSP service on port " + AirtunesServiceRTSPPort);
         
     	/* Create mDNS responders. Also arrange for all services
     	 * to be unregistered on VM shutdown
     	 */
-        if (false) {
     	for(NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
     		if (iface.isLoopback())
     			continue;
@@ -220,14 +219,14 @@ public class AirReceiver {
     			continue;
 
     		for(final InetAddress addr: Collections.list(iface.getInetAddresses())) {
-    			if (!(addr instanceof Inet4Address))
+    			if (!(addr instanceof Inet4Address) && !(addr instanceof Inet6Address))
     				continue;
     			
 				try {
 					/* Create mDNS responder for address */
-			    	final JmDNS jmDNS = JmDNS.create(addr, HostName);
+			    	final JmDNS jmDNS = JmDNS.create(addr, HostName + "-jmdns");
 			    	s_jmDNSInstances.add(jmDNS);
-
+			    	
 			        /* Publish RAOP service */
 			        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
 			    		AirtunesServiceType,
@@ -244,6 +243,5 @@ public class AirReceiver {
 				}
     		}
     	}
-        }
     }
 }
