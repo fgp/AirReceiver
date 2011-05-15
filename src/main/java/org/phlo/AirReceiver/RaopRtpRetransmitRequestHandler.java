@@ -10,9 +10,10 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpRetransmitRequestHandler.class.getName());
 
-	private static final double RetransmitRequestsLimitSeconds = 1.0;
+	private static final double RetransmitRequestsAgeLimitSeconds = 0.8;
+	private static final double RetransmitRequestsOpenLimit = 32;
 	private static final double DuplicateDetectThresholdSeconds = 5;
-	private static final double RetransmitTimeoutSeconds = 0.3;
+	private static final double RetransmitTimeoutSeconds = 0.2;
 	private static final int RetransmitAttempts = 3;
 	
 	private static class MissingPacket {
@@ -21,17 +22,18 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		public long retransmitRequestedNanoTime = Long.MIN_VALUE;
 	}
 	
-	private final int m_retransmitRequestsLimitPackets;
+	private final int m_retransmitRequestsAgeLimitPackets;
 	private final int m_duplicateDetectThresholdPackets;
 	private int m_lastSequence = -1;
 	private static final List<MissingPacket> m_missingPackets = new java.util.LinkedList<MissingPacket>();
+	private int m_retransmitRequestSequence = 0;
 	
 	public RaopRtpRetransmitRequestHandler(AudioStreamInformationProvider streamInfoProvider) {
 		final double packetsPerSecond = streamInfoProvider.getPacketsPerSecond();
-		m_retransmitRequestsLimitPackets = (int)Math.ceil(RetransmitRequestsLimitSeconds * packetsPerSecond);
+		m_retransmitRequestsAgeLimitPackets = (int)Math.ceil(RetransmitRequestsAgeLimitSeconds * packetsPerSecond);
 		m_duplicateDetectThresholdPackets = (int)Math.ceil(DuplicateDetectThresholdSeconds * packetsPerSecond);
 		
-		s_logger.info("Expecting " + packetsPerSecond + " packets per second, maximum number of in-flight retransmits is " + m_retransmitRequestsLimitPackets + ", duplicate detection window is " + m_duplicateDetectThresholdPackets + " packets");
+		s_logger.info("Expecting " + packetsPerSecond + " packets per second, maximum number of in-flight retransmits is " + RetransmitRequestsOpenLimit + ", maximum age of packet for retransmit request is " + m_retransmitRequestsAgeLimitPackets + " packets, size of duplicate detection window is " + m_duplicateDetectThresholdPackets + " packets");
 	}
 	
 	private void markRetransmitted(int sequence) {
@@ -48,7 +50,7 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		missingPacket.sequence = sequence;
 		m_missingPackets.add(missingPacket);
 		
-		while (m_missingPackets.size() > m_retransmitRequestsLimitPackets) {
+		while (m_missingPackets.size() > RetransmitRequestsOpenLimit) {
 			MissingPacket m = m_missingPackets.get(0);
 			s_logger.warning("Packet " + m.sequence + " wasn't retransmitted in time");
 			m_missingPackets.remove(0);
@@ -63,12 +65,15 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		Iterator<MissingPacket> missingPacketIterator = m_missingPackets.iterator();
 		while (missingPacketIterator.hasNext()) {
 			MissingPacket missingPacket = missingPacketIterator.next();
+			
+			int missingPacketAge = (0x1000 + m_lastSequence - missingPacket.sequence) % 0x1000;
 
+			if (missingPacketAge > m_retransmitRequestsAgeLimitPackets)
+				continue;
 			if (missingPacket.retransmitRequestedNanoTime > nowNanoTime - RetransmitTimeoutSeconds*1e9)
 				continue;
-			if (missingPacket.retransmitRequestCount >= RetransmitAttempts) {
+			if (missingPacket.retransmitRequestCount >= RetransmitAttempts)
 				continue;
-			}
 			
 			missingPacket.retransmitRequestedNanoTime = nowNanoTime;
 			++missingPacket.retransmitRequestCount;
@@ -84,7 +89,9 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 			}
 			
 			if (retransmitRequest == null) {
+				m_retransmitRequestSequence = (m_retransmitRequestSequence + 1) % 0x10000;
 				retransmitRequest = new RaopRtpPacket.RetransmitRequest();
+				retransmitRequest.setSequence(m_retransmitRequestSequence);
 				retransmitRequest.setSequenceFirst(missingPacket.sequence);
 				retransmitRequest.setSequenceCount(1);
 			}
@@ -127,7 +134,7 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 		if (increase == 1) {
 			m_lastSequence = audioPacket.getSequence();
 		}
-		else if ((increase > 1) && (increase <= m_retransmitRequestsLimitPackets)) {
+		else if ((increase > 1) && (increase <= RetransmitRequestsOpenLimit)) {
 			s_logger.fine("Packet sequence number increased by " + increase + ", assuming " + (increase-1) + " packet(s) got lost,");
 			for(int s = (m_lastSequence + 1) % 0x10000; s != audioPacket.getSequence(); s = (s + 1) % 0x10000)
 				markMissing(s);

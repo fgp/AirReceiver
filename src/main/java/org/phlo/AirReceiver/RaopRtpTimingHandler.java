@@ -1,7 +1,5 @@
 package org.phlo.AirReceiver;
 
-import java.util.Deque;
-import java.util.Iterator;
 import java.util.logging.Logger;
 
 import org.jboss.netty.channel.*;
@@ -9,8 +7,7 @@ import org.jboss.netty.channel.*;
 public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpTimingHandler.class.getName());
 
-	public static final double TimeRequestInterval = 0.1;
-	public static final int DeltaCount = 128;
+	public static final double TimeRequestInterval = 0.2;
 	
 	private class TimingRequester implements Runnable {
 		private final Channel m_channel;
@@ -25,7 +22,7 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 				RaopRtpPacket.TimingRequest timingRequestPacket = new RaopRtpPacket.TimingRequest();
 				timingRequestPacket.getReceivedTime().setDouble(0);
 				timingRequestPacket.getReferenceTime().setDouble(0);
-				timingRequestPacket.getSendTime().setDouble(m_audioClock.getNowLocalSecondsTime());
+				timingRequestPacket.getSendTime().setDouble(m_audioClock.getNowSecondsTime());
 				
 				m_channel.write(timingRequestPacket);
 				try {
@@ -39,9 +36,7 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	}
 	
 	private final AudioClock m_audioClock;
-	private final Deque<Double> m_deltaWeights = new java.util.LinkedList<Double>();
-	private final Deque<Double> m_deltaValues = new java.util.LinkedList<Double>();
-	private double m_delta = Double.NaN;
+	private final RunningWeightedAverage m_remoteSecondsOffset = new RunningWeightedAverage((int)(10.0 / TimeRequestInterval));
 	private Thread m_synchronizationThread;
 	
 	public RaopRtpTimingHandler(final AudioClock audioClock) {
@@ -54,7 +49,7 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	{
 		channelClosed(ctx, evt);
 		
-		synchronized(this) {
+		if (m_synchronizationThread == null) {
 			m_synchronizationThread = new Thread(new TimingRequester(ctx.getChannel()));
 			m_synchronizationThread.setDaemon(true);
 			m_synchronizationThread.setName("Time Synchronizer");
@@ -64,7 +59,6 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 		
 		super.channelOpen(ctx, evt);
 	}
-	
 
 	@Override
 	public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent evt)
@@ -89,16 +83,18 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	}
 
 	private synchronized void timingResponseReceived(RaopRtpPacket.TimingResponse timingResponsePacket) {
+		final double localReceiveSecondsTime = m_audioClock.getNowSecondsTime();
+		
 		final double localSecondsTime = 
-			m_audioClock.getNowLocalSecondsTime() * 0.5 +
+			localReceiveSecondsTime * 0.5 +
 			timingResponsePacket.getReferenceTime().getDouble() * 0.5;
 		final double remoteSecondsTime =
 			timingResponsePacket.getReceivedTime().getDouble() * 0.5 +
 			timingResponsePacket.getSendTime().getDouble() * 0.5;
-		final double delta = remoteSecondsTime - localSecondsTime;
+		final double remoteSecondsOffset = remoteSecondsTime - localSecondsTime;
 		
 		final double localInterval =
-			m_audioClock.getNowLocalSecondsTime() -
+			localReceiveSecondsTime -
 			timingResponsePacket.getReferenceTime().getDouble();
 		final double remoteInterval =
 			timingResponsePacket.getSendTime().getDouble() -
@@ -106,52 +102,30 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 		final double transmissionTime = Math.max(localInterval - remoteInterval, 0);
 		final double weight = 10e-3 / (transmissionTime + 10e-3);
 		
-		addDelta(delta, weight);		
-		s_logger.fine("Timing response indicated delta " + delta + " and had transmission time " + transmissionTime + ", weighting with " + weight);
+		final double remoteSecondsOffsetPrevious = (!m_remoteSecondsOffset.isEmpty() ? m_remoteSecondsOffset.get() : 0.0);
+		m_remoteSecondsOffset.add(remoteSecondsOffset, weight);
+		final double secondsTimeAdjustment = m_remoteSecondsOffset.get() - remoteSecondsOffsetPrevious;
+		
+		s_logger.fine("Timing response indicated offset " + remoteSecondsOffset + " moving the averaged offset to " + m_remoteSecondsOffset.get() + " adjusted time by " + secondsTimeAdjustment);
 	}
 
 	private synchronized void syncReceived(RaopRtpPacket.Sync syncPacket) {
-		double localSecondsTime = fromRemoteSecondsTime(syncPacket.getTime().getDouble());
-		if (Double.isNaN(localSecondsTime))
-			localSecondsTime = m_audioClock.getNowLocalSecondsTime();		
-		final double syncAge = Math.abs(m_audioClock.getNowLocalSecondsTime() - localSecondsTime);
-			
-		m_audioClock.requestSyncRemoteFrameTime(
-			syncPacket.getTimeStampMinusLatency(),
-			localSecondsTime,
-			syncPacket.getExtension()
-		);
-		s_logger.info("Sync packet with timestamp(-latency) " + syncPacket.getTimeStampMinusLatency() + " and local time " + localSecondsTime + " was " + syncAge + " seconds old");
-	}
-	
-	private void addDelta(double delta, double weight) {
-		m_deltaValues.addLast(delta);
-		m_deltaWeights.addLast(weight);
-		while (m_deltaValues.size() > DeltaCount)
-			m_deltaValues.removeFirst();
-		while (m_deltaWeights.size() > DeltaCount)
-			m_deltaWeights.removeFirst();
-		
-		double vsum = 0.0;
-		double wsum = 0.0;
-		final Iterator<Double> i_v = m_deltaValues.iterator();
-		final Iterator<Double> i_w = m_deltaWeights.iterator();
-		while ((i_v.hasNext() && (i_w.hasNext()))) {
-			final double v = i_v.next();
-			final double w = i_w.next();
-			vsum += v*w;
-			wsum += w;
+		if (!m_remoteSecondsOffset.isEmpty()) {
+			m_audioClock.setFrameTime(
+				syncPacket.getTimeStampMinusLatency(),
+				convertRemoteToLocalSecondsTime(syncPacket.getTime().getDouble())
+			);
 		}
-		double avg = vsum / wsum;
-
-		s_logger.fine("Delta between remote and local seconds time is now " + avg + " seconds after adjustment of " + (avg - m_delta) + " seconds");
-		m_delta = avg;
+		else {
+			m_audioClock.setFrameTime(
+				syncPacket.getTimeStampMinusLatency(),
+				0.0
+			);
+			s_logger.warning("Times synchronized, cannot correct latency of sync packet");
+		}
 	}
 	
-	private double fromRemoteSecondsTime(double remoteSecondsTime) {
-		if (!Double.isNaN(m_delta))
-			return remoteSecondsTime - m_delta;
-		else
-			return Double.NaN;
+	private double convertRemoteToLocalSecondsTime(double remoteSecondsTime) {
+		return remoteSecondsTime - m_remoteSecondsOffset.get();
 	}
 }

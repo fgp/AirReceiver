@@ -10,10 +10,9 @@ import javax.sound.sampled.*;
 public class AudioOutputQueue implements AudioClock {
 	private static Logger s_logger = Logger.getLogger(AudioOutputQueue.class.getName());
 
-	private static final double QueueLengthMaxSeconds = 5;
-	private static final double MuteThresholdSeconds = 0.5;
+	private static final double QueueLengthMaxSeconds = 10;
 	private static final double BufferSizeSeconds = 0.05;
-	private static final double TimingPrecision = 0.1;
+	private static final double TimingPrecision = 0.001;
 
 	/**
 	 * Signals that the queue is being closed.
@@ -21,8 +20,6 @@ public class AudioOutputQueue implements AudioClock {
 	 */
 	private volatile boolean m_closing = false;
 	
-	private final double m_localSecondsOffset = (double)0x83aa7e80L;
-
 	/**
 	 *  The line's audio format
 	 */
@@ -79,14 +76,19 @@ public class AudioOutputQueue implements AudioClock {
 	private long m_lineFramesWritten = 0;
 	
 	/**
-	 * Active remote frame time offset
+	 * Largest frame time seen so far
 	 */
-	private long m_activeRemoteFrameTimeOffset = 0;
+	private long m_latestSeenFrameTime = 0;
 	
 	/**
-	 * Requested remote frame time offset
+	 * The frame time corresponding to line time zero
 	 */
-	private long m_requestedRemoteFrameTimeOffset = 0;
+	private long m_frameTimeOffset = 0;
+	
+	/**
+	 * The seconds time corresponding to line time zero
+	 */
+	private final double m_secondsTimeOffset;
 	
 	/**
 	 * Requested line gain
@@ -106,6 +108,9 @@ public class AudioOutputQueue implements AudioClock {
 				/* Mute line initially to prevent clicks */
 				setLineGain(Float.NEGATIVE_INFINITY);
 
+				/* Enqueue some silence */
+				appendSilence(m_line.available() / m_bytesPerFrame);
+				
 				/* Start the line */
 				m_line.start();
 				
@@ -116,13 +121,13 @@ public class AudioOutputQueue implements AudioClock {
 						/* Queue filled */
 						
 						/* If the gap between the next packet and the end of line is
-						 * negligible (fits into the line buffer), we write it to the line.
+						 * negligible (less than one packet), we write it to the line.
 						 * Otherwise, we fill the line buffer with silence and hope for
 						 * further packets to appear in the queue
 						 */
-						final long entryRemoteTime = m_queue.firstKey();
-						final long entryFrameTime = fromRemoteFrameTime(entryRemoteTime);
-						final long gapFrames = entryFrameTime - getEndLocalFrameTime();
+						final long entryFrameTime = m_queue.firstKey();
+						final long entryLineTime = convertFrameToLineTime(entryFrameTime);
+						final long gapFrames = entryLineTime - getEndLineTime();
 						if (gapFrames < m_packetSizeFrames) {
 							/* Negligible gap between packet and line end. Prepare packet for playback */
 							didWarnGap = false;
@@ -130,12 +135,12 @@ public class AudioOutputQueue implements AudioClock {
 							/* Unmute line in case it was muted previously */
 							if (lineMuted) {
 								lineMuted = false;
-								setLineGain(m_requestedGain);
+								applyGain();
 								s_logger.info("Audio data available, un-muted line");
 							}
 							
 							/* Get sample data and do sanity checks */
-							final byte[] nextPlaybackSamples = m_queue.remove(entryRemoteTime);
+							final byte[] nextPlaybackSamples = m_queue.remove(entryFrameTime);
 							int nextPlaybackSamplesLength = nextPlaybackSamples.length;
 							if (nextPlaybackSamplesLength % m_bytesPerFrame != 0) {
 								s_logger.severe("Audio data contains non-integral number of frames, ignore last " + (nextPlaybackSamplesLength % m_bytesPerFrame) + " bytes");
@@ -144,7 +149,7 @@ public class AudioOutputQueue implements AudioClock {
 							
 							/* Append packet to line */
 							s_logger.finest("Audio data containing " + nextPlaybackSamplesLength / m_bytesPerFrame + " frames for playback time " + entryFrameTime + " found in queue, appending to the output line");
-							appendFrames(nextPlaybackSamples, 0, nextPlaybackSamplesLength, entryFrameTime, false);
+							appendFrames(nextPlaybackSamples, 0, nextPlaybackSamplesLength, entryLineTime);
 							continue;
 						}
 						else {
@@ -152,7 +157,7 @@ public class AudioOutputQueue implements AudioClock {
 							
 							if (!didWarnGap) {
 								didWarnGap = true;
-								s_logger.warning("Audio data missing for frame time " + getEndLocalFrameTime() + " (currently " + gapFrames + " frames), writing " + m_packetSizeFrames + " frames of silence");							
+								s_logger.warning("Audio data missing for frame time " + getEndLineTime() + " (currently " + gapFrames + " frames), writing " + m_packetSizeFrames + " frames of silence");							
 							}
 						}
 					}
@@ -162,17 +167,17 @@ public class AudioOutputQueue implements AudioClock {
 						if (!lineMuted) {
 							lineMuted = true;
 							setLineGain(Float.NEGATIVE_INFINITY);
-							s_logger.info("Audio data ended at frame time " + getEndLocalFrameTime() + ", writing " + m_packetSizeFrames + " frames of silence and muted line");
+							s_logger.fine("Audio data ended at frame time " + getEndLineTime() + ", writing " + m_packetSizeFrames + " frames of silence and muted line");
 						}
 					}
 					
-					appendFrames(null, 0, 0, getEndLocalFrameTime() + m_packetSizeFrames, false);
+					appendSilence(m_packetSizeFrames);
 				}
 				
 				/* Before we exit, we fill the line's buffer with silence. This should prevent
 				 * noise from being output while the line is being stopped
 				 */
-				appendFrames(null, 0, 0, getEndLocalFrameTime() + m_line.available() / m_bytesPerFrame, true);
+				appendSilence(m_line.available() / m_bytesPerFrame);
 			}
 			catch (Throwable e) {
 				s_logger.log(Level.SEVERE, "Audio output thread died unexpectedly", e);
@@ -196,47 +201,50 @@ public class AudioOutputQueue implements AudioClock {
 		 * @param time playback time
 		 * @param warnNonContinous warn about non-continous samples
 		 */
-		public void appendFrames(byte[] samples, int off, int len, long time, boolean warnNonContinous) {
+		private void appendFrames(byte[] samples, int off, int len, long lineTime) {
 			assert off % m_bytesPerFrame == 0;
 			assert len % m_bytesPerFrame == 0;
-
+			
 			while (true) {
 				/* Fetch line end time only once per iteration */
-				long endFrameTime = getEndLocalFrameTime();
+				long endLineTime = getEndLineTime();
 				
-				if (endFrameTime == time) {
+				final long timingErrorFrames = lineTime - endLineTime;
+				final double timingErrorSeconds = (double)timingErrorFrames / m_sampleRate;
+				
+				if (Math.abs(timingErrorSeconds) <= TimingPrecision) {
 					/* Samples to append scheduled exactly at line end. Just append them and be done */
 
 					appendFrames(samples, off, len);
 					break;
 				}
-				else if (endFrameTime < time) {
+				else if (timingErrorFrames > 0) {
 					/* Samples to append scheduled after the line end. Fill the gap with silence */
+					s_logger.warning("Audio output non-continous (gap of " + timingErrorFrames + " frames), filling with silence");
 
-					if (warnNonContinous)
-						s_logger.warning("Audio output non-continous (end of line is " + endFrameTime + " but requested playback time is  " + time + "), writing " + (time - endFrameTime) + " frames of silence");
-
-					byte[] silenceFrames = new byte[(int)(time - endFrameTime) * m_bytesPerFrame];
-					for(int i = 0; i < silenceFrames.length; ++i)
-						silenceFrames[i] = m_lineLastFrame[i % m_bytesPerFrame];
-					appendFrames(silenceFrames, 0, silenceFrames.length);
+					appendSilence((int)(lineTime - endLineTime));
 				}
-				else if (endFrameTime > time) {
+				else if (timingErrorFrames < 0) {
 					/* Samples to append scheduled before the line end. Remove the overlapping
 					 * part and retry
 					 */
-					
-					if (warnNonContinous)
-						s_logger.warning("Audio output non-continous (end of line is " + endFrameTime + " but requested playback time is  " + time + "), skipping " + (endFrameTime - time) + " frames");
+					s_logger.warning("Audio output non-continous (overlap of " + (-timingErrorFrames) + "), skipping overlapping frames");
 
-					off += (endFrameTime - time) * m_bytesPerFrame;
-					time += endFrameTime - time;
+					off += (endLineTime - lineTime) * m_bytesPerFrame;
+					lineTime += endLineTime - lineTime;
 				}
 				else {
 					/* Strange universe... */
 					assert false;
 				}
 			}
+		}
+		
+		private void appendSilence(int frames) {
+			byte[] silenceFrames = new byte[frames * m_bytesPerFrame];
+			for(int i = 0; i < silenceFrames.length; ++i)
+				silenceFrames[i] = m_lineLastFrame[i % m_bytesPerFrame];
+			appendFrames(silenceFrames, 0, silenceFrames.length);
 		}
 		
 		/**
@@ -246,7 +254,7 @@ public class AudioOutputQueue implements AudioClock {
 		 * @param off sample data offset
 		 * @param len sample data length
 		 */
-		public void appendFrames(byte[] samples, int off, int len) {
+		private void appendFrames(byte[] samples, int off, int len) {
 			assert off % m_bytesPerFrame == 0;
 			assert len % m_bytesPerFrame == 0;
 
@@ -278,7 +286,7 @@ public class AudioOutputQueue implements AudioClock {
 				for(int b=0; b < m_bytesPerFrame; ++b)
 					m_lineLastFrame[b] = samples[off + len - (m_bytesPerFrame - b)];
 				
-				s_logger.finest("Audio output line end is now at " + getEndLocalFrameTime() + " after writing " + len / m_bytesPerFrame + " frames");
+				s_logger.finest("Audio output line end is now at " + getEndLineTime() + " after writing " + len / m_bytesPerFrame + " frames");
 			}
 		}
 	}
@@ -334,12 +342,13 @@ public class AudioOutputQueue implements AudioClock {
 		m_queueThread.setName("Audio Enqueuer");
 		m_queueThread.setPriority(Thread.MAX_PRIORITY);
 		m_queueThread.start();
-		while (getNowLocalFrameTime() == 0) {
-			try { Thread.sleep(10); }
-			catch (InterruptedException e) { /* Ignore */ }
-		}
+		while (m_queueThread.isAlive() && !m_line.isActive())
+			Thread.yield();
+		
+		/* Initialize the seconds time offset now that the line is running. */
+		m_secondsTimeOffset = 2208988800.0 +  (double)System.currentTimeMillis() * 1e-3;
 	}
-	
+
 	/**
 	 * Sets the line's MASTER_GAIN control to the provided value,
 	 * or complains to the log of the line does not support a MASTER_GAIN control
@@ -361,12 +370,16 @@ public class AudioOutputQueue implements AudioClock {
 			s_logger.severe("Audio output line doesn not support volume control");
 	}
 	
+	private synchronized void applyGain() {
+		setLineGain(m_requestedGain);
+	}
+	
 	/**
 	 * Sets the desired output gain.
 	 * 
 	 * @param gain desired gain
 	 */
-	public void setGain(float gain) {
+	public synchronized void setGain(float gain) {
 		m_requestedGain = gain;
 	}
 	
@@ -375,7 +388,7 @@ public class AudioOutputQueue implements AudioClock {
 	 * 
 	 * @param gain desired gain
 	 */
-	public float getGain() {
+	public synchronized float getGain() {
 		return m_requestedGain;
 	}
 	
@@ -394,27 +407,30 @@ public class AudioOutputQueue implements AudioClock {
 	 * @param playbackSamples sample data
 	 * @return true if the sample data was added to the queue
 	 */
-	public boolean enqueue(long playbackRemoteStartFrameTime, byte[] playbackSamples) {
+	public synchronized boolean enqueue(long frameTime, byte[] frames) {
 		/* Compute playback delay, i.e., the difference between the last sample's
 		 * playback time and the current line time
 		 */
-		long playbackStartFrameTime = fromRemoteFrameTime(playbackRemoteStartFrameTime);
-		long playbackDelayFrames = playbackStartFrameTime + playbackSamples.length / m_bytesPerFrame - getNowLocalFrameTime();
+		double delay =
+			(convertFrameToLineTime(frameTime) + frames.length / m_bytesPerFrame - getNowLineTime()) /
+			m_sampleRate;
 		
-		if (playbackDelayFrames < 0) {
+		m_latestSeenFrameTime = Math.max(m_latestSeenFrameTime, frameTime);
+		
+		if (delay < -QueueLengthMaxSeconds / 2.0) {
 			/* The whole packet is scheduled to be played in the past */
-			s_logger.warning("Audio data arrived " + (-playbackDelayFrames) + " frames too late, dropping");
+			s_logger.warning("Audio data arrived " + (-delay) + " seconds too late, dropping");
 			return false;
 		}
-		else if (playbackDelayFrames > QueueLengthMaxSeconds * m_sampleRate) {
+		else if (delay > QueueLengthMaxSeconds / 2.0) {
 			/* The packet extends further into the future that our maximum queue size.
 			 * We reject it, since this is probably the result of some timing discrepancies
 			 */
-			s_logger.warning("Audio data arrived " + (playbackDelayFrames) + " frames too early, dropping");
+			s_logger.warning("Audio data arrived " + delay + " seconds too early, dropping");
 			return false;
 		}
 			
-		m_queue.put(playbackRemoteStartFrameTime, playbackSamples);
+		m_queue.put(frameTime, frames);
 		return true;
 	}
 	
@@ -424,82 +440,37 @@ public class AudioOutputQueue implements AudioClock {
 	public void flush() {
 		m_queue.clear();
 	}
-	
-	/**
-	 * Convert from remote frame time to line frame time
-	 * 
-	 * @param remoteFrameTime  a remote frame time
-	 * @return remoteFrameTime converted to line frame time
-	 */
-	private synchronized long fromRemoteFrameTime(long remoteFrameTime) {
-		return remoteFrameTime - m_activeRemoteFrameTimeOffset;
-	}
-	
-	@Override
-	public synchronized void requestSyncRemoteFrameTime(long remoteFrameTime, double localSecondsTime, boolean force) {
-		/* Convert local seconds time to frame time */
-		final long localFrameTime = Math.round((localSecondsTime - getLocalSecondsOffset()) * (double)m_sampleRate);
 
-		/* Compute the requested offset and the adjustment we'd have to make to the
-		 * active offset
-		 */
-		m_requestedRemoteFrameTimeOffset = remoteFrameTime - localFrameTime;
-		double requestedAdjustmentSeconds = (double)(m_requestedRemoteFrameTimeOffset - m_activeRemoteFrameTimeOffset) / m_sampleRate;
+	@Override
+	public synchronized void setFrameTime(long frameTime, double secondsTime) {
+		final double ageSeconds = getNowSecondsTime() - secondsTime;
+		final long lineTime = Math.round((secondsTime - m_secondsTimeOffset) * m_sampleRate);
+
+		final long frameTimeOffsetPrevious = m_frameTimeOffset;
+		m_frameTimeOffset = frameTime - lineTime;
 		
-		if ((Math.abs(requestedAdjustmentSeconds) > TimingPrecision) || force) {
-			/* We've either been forced to adjust the offset, or the timing is way off.
-			 * We've got no other chance than to adjust the active offset, even if this
-			 * probably produces an audible distortion
-			 */
-			m_activeRemoteFrameTimeOffset = m_requestedRemoteFrameTimeOffset;
-			s_logger.warning("Remote frame time to local frame time offset is now " + m_activeRemoteFrameTimeOffset + " after adjustment by " + requestedAdjustmentSeconds + " seconds");
-		}
-		else {
-			/* We're within parameters. Since adjusting the offset produces an
-			 * audible distortion, we ignore the sync request
-			 */
-			s_logger.fine("Remote frame time to local frame time offset is still " + m_activeRemoteFrameTimeOffset + ", requested adjustment was only " + requestedAdjustmentSeconds + " seconds");
-		}
-	}
-	
-	/**
-	 * Returns the offset of the local seconds time,
-	 * i.e. the local seconds time that corresponds
-	 * to the local frame time zero.
-	 */
-	@Override
-	public double getLocalSecondsOffset() {
-		return m_localSecondsOffset;
+		s_logger.fine("Frame time adjusted by " + (m_frameTimeOffset - frameTimeOffsetPrevious) + " based on timing information " + ageSeconds + " seconds old and " + (m_latestSeenFrameTime - frameTime) + " frames before latest seen frame time");
 	}
 
-	/**
-	 * Returns the current line frame time.
-	 * 
-	 * @return the current line frame time
-	 */
-	public synchronized long getNowLocalFrameTime() {
+	@Override
+	public double getNowSecondsTime() {
+		return m_secondsTimeOffset + (double)getNowLineTime() / m_sampleRate;
+	}
+
+	@Override
+	public long getNowFrameTime() {
+		return m_frameTimeOffset + getNowLineTime();
+	}
+
+	private synchronized long getEndLineTime() {
+		return m_lineFramesWritten;
+	}
+	
+	private long getNowLineTime() {
 		return m_line.getLongFramePosition();
 	}
 	
-	/**
-	 * Returns the current line frame time in seconds.
-	 * Offsetted by the local seconds epoch to prevent
-	 * to make this monotonic even if the queue is
-	 * destroyed and re-created.
-	 */
-	@Override
-	public double getNowLocalSecondsTime() {
-		return getLocalSecondsOffset() + (double)getNowLocalFrameTime() / m_sampleRate;
-	}
-	
-	/**
-	 * Returns the frame time of the current line end,
-	 * i.e. the playback time of the last frame written
-	 * to the line
-	 * 
-	 * @return line end frame time
-	 */
-	private synchronized long getEndLocalFrameTime() {
-		return m_lineFramesWritten;
+	private synchronized long convertFrameToLineTime(long entryFrameTime) {
+		return entryFrameTime - m_frameTimeOffset;
 	}
 }

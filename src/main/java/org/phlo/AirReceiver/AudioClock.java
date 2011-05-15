@@ -1,10 +1,8 @@
 package org.phlo.AirReceiver;
 
 public interface AudioClock {
-	double getLocalSecondsOffset();
-
-	long getNowLocalFrameTime();
-	double getNowLocalSecondsTime();
+	double getNowSecondsTime();
+	long getNowFrameTime();
 	
-	void requestSyncRemoteFrameTime(long remoteFrameTime, double localSecondsTime, boolean force);
+	void setFrameTime(long frameTime, double secondsTime);
 }

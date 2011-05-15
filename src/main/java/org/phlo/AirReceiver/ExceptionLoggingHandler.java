@@ -10,6 +10,7 @@ public class ExceptionLoggingHandler extends SimpleChannelHandler {
 
 	@Override
 	public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent evt) throws Exception {
+		super.exceptionCaught(ctx, evt);
 		s_logger.log(Level.WARNING, "Handler raised exception", evt.getCause());
 	}
 }

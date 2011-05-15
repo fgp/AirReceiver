@@ -64,12 +64,19 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 		
 		synchronized(this) {
 			if (m_challenge != null) {
-				/* Get appropriate response to challenge and
-				 * add to the response base-64 encoded. XXX
-				 */
-				String sig = Base64.encodePadded(getSignature());
-				
-				resp.setHeader(HeaderSignature, sig);
+				try {
+					/* Get appropriate response to challenge and
+					 * add to the response base-64 encoded. XXX
+					 */
+					String sig = Base64.encodePadded(getSignature());
+					
+					resp.setHeader(HeaderSignature, sig);
+				}
+				finally {
+					/* Forget last challenge */
+					m_challenge = null;
+					m_localAddress = null;
+				}
 			}
 		}
 		
@@ -77,7 +84,7 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 	}
 	
 	private byte[] getSignature() {
-		final ByteBuffer sigData = ByteBuffer.allocate(0x20);
+		final ByteBuffer sigData = ByteBuffer.allocate(16 /* challenge */ + 16 /* ipv6 address */ + 6 /* hw address*/);
 		
 		sigData.put(m_challenge);
 		sigData.put(m_localAddress.getAddress());

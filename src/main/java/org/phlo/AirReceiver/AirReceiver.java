@@ -210,6 +210,7 @@ public class AirReceiver {
     	/* Create mDNS responders. Also arrange for all services
     	 * to be unregistered on VM shutdown
     	 */
+        if (false) {
     	for(NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
     		if (iface.isLoopback())
     			continue;
@@ -243,5 +244,6 @@ public class AirReceiver {
 				}
     		}
     	}
+        }
     }
 }
