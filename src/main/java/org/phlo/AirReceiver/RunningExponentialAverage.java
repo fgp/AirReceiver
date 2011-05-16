@@ -18,24 +18,27 @@
 package org.phlo.AirReceiver;
 
 public class RunningExponentialAverage {
-	public final double m_timeConstant;
 	public double m_value = Double.NaN;
 	
-	public RunningExponentialAverage(double timeConstant, double initialValue) {
-		m_timeConstant = timeConstant;
+	public RunningExponentialAverage() {
+		m_value = Double.NaN;
+	}
+	
+	public RunningExponentialAverage(double initialValue) {
 		m_value = initialValue;
 	}
 	
-	public void add(double value) {
-		if (Double.isNaN(value)) {
+	public void add(double value, double weight) {
+		if (Double.isNaN(m_value)) {
 			m_value = value;
 		}
 		else {
-			/* Numerically optimized restatement of
-			 * m_v = m_v * tc + (1.0 - tc) * v;
-			 */
-			m_value = value + m_timeConstant * (m_value - value);
+			m_value = value * weight + m_value * (1.0 - weight);
 		}
+	}
+	
+	public boolean isEmpty() {
+		return Double.isNaN(m_value);
 	}
 	
 	public double get() {
