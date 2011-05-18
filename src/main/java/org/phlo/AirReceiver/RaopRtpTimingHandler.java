@@ -54,7 +54,6 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 	
 	private final AudioClock m_audioClock;
 	private final RunningExponentialAverage m_remoteSecondsOffset = new RunningExponentialAverage();
-//	private final RunningWeightedAverage m_remoteSecondsOffset = new RunningWeightedAverage((int)(10.0 / TimeRequestInterval));
 	private Thread m_synchronizationThread;
 	
 	public RaopRtpTimingHandler(final AudioClock audioClock) {
@@ -118,13 +117,13 @@ public class RaopRtpTimingHandler extends SimpleChannelHandler {
 			timingResponsePacket.getSendTime().getDouble() -
 			timingResponsePacket.getReceivedTime().getDouble();
 		final double transmissionTime = Math.max(localInterval - remoteInterval, 0);
-		final double weight = 1e-4 / (transmissionTime + 1e-3);
+		final double weight = 1e-6 / (transmissionTime + 1e-3);
 		
 		final double remoteSecondsOffsetPrevious = (!m_remoteSecondsOffset.isEmpty() ? m_remoteSecondsOffset.get() : 0.0);
 		m_remoteSecondsOffset.add(remoteSecondsOffset, weight);
 		final double secondsTimeAdjustment = m_remoteSecondsOffset.get() - remoteSecondsOffsetPrevious;
 		
-		s_logger.fine("Timing response with weight " + weight + " indicated offset " + remoteSecondsOffset + " thereby adjusting the averaged offset by " + secondsTimeAdjustment + " leading to the new averaged offset " + m_remoteSecondsOffset.get());
+		s_logger.finest("Timing response with weight " + weight + " indicated offset " + remoteSecondsOffset + " thereby adjusting the averaged offset by " + secondsTimeAdjustment + " leading to the new averaged offset " + m_remoteSecondsOffset.get());
 	}
 
 	private synchronized void syncReceived(RaopRtpPacket.Sync syncPacket) {
