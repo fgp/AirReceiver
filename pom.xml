@@ -5,7 +5,7 @@
 
 	<groupId>org.phlo</groupId>
 	<artifactId>AirReceiver</artifactId>
-	<version>1.1-SNAPSHOT</version>
+	<version>1.1</version>
 	<packaging>jar</packaging>
 
 	<name>AirReceiver</name>
@@ -39,7 +39,53 @@
 	</dependencies>
 
 	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+				<includes>
+					<include>version.properties</include>
+				</includes>
+				<filtering>true</filtering>
+			</resource>
+			<resource>
+				<directory>src/main/resources</directory>
+				<includes>
+					<include>logging.properties</include>
+					<include>icon_32.png</include>
+				</includes>
+				<filtering>false</filtering>
+			</resource>
+		</resources>
+
 		<plugins>
+			<plugin>
+				<artifactId>maven-resources-plugin</artifactId>
+				<version>2.5</version>
+				<executions>
+					<!--  Copy src/main/resources/Info.plist to <project.build.directory>/Info.plist
+					      and interpolate the pom version number -->
+					<execution>
+						<id>interpolate-infoplist</id>
+						<phase>package</phase>
+						<goals>
+							<goal>copy-resources</goal>
+						</goals>
+						<configuration>
+							<outputDirectory>${project.build.directory}</outputDirectory>
+							<escapeString>\</escapeString>
+							<resources>
+								<resource>
+									<directory>src/main/resources</directory>
+									<includes>
+										<include>Info.plist</include>
+									</includes>
+									<filtering>true</filtering>
+								</resource>
+							</resources>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 			<plugin>
 				<inherited>true</inherited>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -89,7 +135,8 @@
 				<configuration>
 					<mainClass>org.phlo.AirReceiver.AirReceiver</mainClass>
 					<iconFile>${basedir}/src/main/resources/icon.icns</iconFile>
-					<dictionaryFile>${basedir}/src/main/resources/Info.plist</dictionaryFile>
+					<!--  Created by interpolate-infoplist above -->
+					<dictionaryFile>${project.build.directory}/Info.plist</dictionaryFile>
 				</configuration>
 				<executions>
 					<execution>

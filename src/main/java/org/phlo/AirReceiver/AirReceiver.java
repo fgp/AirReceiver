@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.List;
+import java.util.Properties;
 import java.util.concurrent.*;
 import java.util.logging.*;
 import java.awt.*;
@@ -51,9 +52,11 @@ public class AirReceiver {
     		throw new RuntimeException(e.getMessage(), e);
 		}
 	}
-
+	
 	private static final Logger s_logger = Logger.getLogger(AirReceiver.class.getName());
 
+	public static final String Version = getVersion();
+	
 	/**
 	 * The hardware (MAC) address of the emulated Airport Express
 	 */
@@ -113,7 +116,8 @@ public class AirReceiver {
 	 * Message dispayed in the "About" dialog
 	 */
 	private static final String AboutMessage =
-		"    AirReceiver\n" +
+		"   * AirReceiver " + Version + " *\n" +
+		"\n" +
 		"Copyright (c) 2011 Florian G. Pflug\n" +
 		"\n" +
 		"AirReceiver is free software: you can redistribute it and/or modify\n" +
@@ -129,7 +133,8 @@ public class AirReceiver {
 		"You should have received a copy of the GNU General Public License\n" +
 		"along with AirReceiver.  If not, see <http://www.gnu.org/licenses/>." +
 		"\n\n" +
-		"    Java ALAC Decoder\n" +
+		"   * Java ALAC Decoder *\n" +
+		"\n" +
 		"Copyright (c) 2011 Peter McQuillan";
 
 	/**
@@ -190,6 +195,23 @@ public class AirReceiver {
 			return true;
 		else
 			return false;
+	}
+	
+	/**
+	 * Reads the version from the version.properties file
+	 * @return the version
+	 */
+	private static String getVersion() {
+		Properties versionProperties = new Properties();
+		final InputStream versionPropertiesStream =
+			AirReceiver.class.getClassLoader().getResourceAsStream("version.properties");
+    	try {
+    		versionProperties.load(versionPropertiesStream);
+		}
+    	catch (final IOException e) {
+    		throw new RuntimeException(e.getMessage(), e);
+		}
+    	return versionProperties.getProperty("org.phlo.AirReceiver.version");
 	}
 
 	/**
@@ -404,7 +426,7 @@ public class AirReceiver {
 				        /* Publish RAOP service */
 				        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
 				    		AirtunesServiceType,
-				    		HardwareAddressString + "@" + HostName + " (" + addr.toString() + ")",
+				    		HardwareAddressString + "@" + HostName + " (" + iface.getName() + ")",
 				    		AirtunesServiceRTSPPort,
 				    		0 /* weight */, 0 /* priority */,
 				    		AirtunesServiceProperties
