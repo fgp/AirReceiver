@@ -27,7 +27,7 @@ import org.jboss.netty.handler.codec.http.*;
 
 /**
  * Adds an {@code Apple-Response} header to a response if the request contain
- * an {@code Apple-Request}Êheader.
+ * an {@code Apple-Request} header.
  */
 public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 {

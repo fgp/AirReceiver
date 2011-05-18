@@ -28,7 +28,7 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 /**
  * Handles packet retransmissions.
  * <p>
- * Sends {@link RaopRtpPacket.RetransmitRequest}Êpacket in response to missing packets,
+ * Sends {@link RaopRtpPacket.RetransmitRequest} packet in response to missing packets,
  * and resends those requests after a timeout period until the packet arrives.
  * <p>
  * Uses an {@link AudioClock} as it's time source, any thus only re-requests packets
