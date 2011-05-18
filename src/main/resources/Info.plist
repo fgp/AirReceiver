@@ -5,7 +5,7 @@
 		<key>CFBundleName</key>
 		<string>${bundleName}</string>
 		<key>CFBundleVersion</key>
-		<string>1.0</string>
+		<string>1.1-SNAPSHOT</string>
 		<key>CFBundleAllowMixedLocalizations</key>
 		<string>true</string>
 		<key>CFBundleExecutable</key>
