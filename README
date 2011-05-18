@@ -15,10 +15,16 @@ AirReceiver is compatible with iTunes and iPhones/iPods. It implements not
 only raw audio streaming but also the timing-related parts of RAOP/Airtunes2.
 
 Usage
------
-Download and launch the application from the bin/ folder and lauch it. Give
-it a minute or so to announce it's service, and choose the computer running
-AirReceiver as output device in iTunes or iOS.
+------
+If you're on Mac OS X, download the AirReceiver-app.zip from the bin/ folder
+(or use the large Download button), unzip it, and launch it.
+
+If you're on Windows or Linux, download the AirReceiver.one-jar.jar and
+double-click it (or type java -jar AirReceiver.one-jar.jar on the command
+line).
+
+Either way, give it about half a minute to announce itself on the network,
+then choose it as output device on your iOS device or in iTunes.
 
 iTunes adds an icon in the bottom right corner once it has detected a
 compatible device, iOS shows the icon next to the previous, pause, next
@@ -26,8 +32,8 @@ buttons.
 
 Installation
 ------------
-An Mac OS X compatible application can be found in the bin/ folder. Releases
-for other platforms are forthcoming.
+No installation is required, simply download the appropriate package
+(either the app or the jar) for your platform and launch it.
 
 License
 -------
