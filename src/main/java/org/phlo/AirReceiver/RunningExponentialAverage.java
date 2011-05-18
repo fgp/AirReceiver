@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -19,16 +19,16 @@ package org.phlo.AirReceiver;
 
 public class RunningExponentialAverage {
 	public double m_value = Double.NaN;
-	
+
 	public RunningExponentialAverage() {
 		m_value = Double.NaN;
 	}
-	
-	public RunningExponentialAverage(double initialValue) {
+
+	public RunningExponentialAverage(final double initialValue) {
 		m_value = initialValue;
 	}
-	
-	public void add(double value, double weight) {
+
+	public void add(final double value, final double weight) {
 		if (Double.isNaN(m_value)) {
 			m_value = value;
 		}
@@ -36,11 +36,11 @@ public class RunningExponentialAverage {
 			m_value = value * weight + m_value * (1.0 - weight);
 		}
 	}
-	
+
 	public boolean isEmpty() {
 		return Double.isNaN(m_value);
 	}
-	
+
 	public double get() {
 		return m_value;
 	}

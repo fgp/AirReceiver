@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -56,23 +56,23 @@ public class AirTunesKeys {
 		"Aoo/jLE0aOgPZBiOEEa6G+RYpg==\n" +
 		"";
 	public static final RSAPrivateKey PrivateKey = rsaPrivateKeyDecode(PrivateKeyData);
-	
-	private static RSAPrivateKey rsaPrivateKeyDecode(String privateKey) {
+
+	private static RSAPrivateKey rsaPrivateKeyDecode(final String privateKey) {
 		try {
-			KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-			KeySpec ks = new PKCS8EncodedKeySpec(Base64.decodePadded(privateKey));
+			final KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+			final KeySpec ks = new PKCS8EncodedKeySpec(Base64.decodePadded(privateKey));
 			return (RSAPrivateKey)keyFactory.generatePrivate(ks);
 		}
-		catch (Exception e) {
+		catch (final Exception e) {
 			throw new RuntimeException("Failed to decode built-in private key", e);
 		}
 	}
-	
-	public static Cipher getCipher(String transformation, String provider) {
+
+	public static Cipher getCipher(final String transformation, final String provider) {
 		try {
 			return Cipher.getInstance(transformation, provider);
 		}
-		catch (Exception e) {
+		catch (final Exception e) {
 			throw new RuntimeException("No implementation of " + transformation + " provided by " + provider);
 		}
 	}

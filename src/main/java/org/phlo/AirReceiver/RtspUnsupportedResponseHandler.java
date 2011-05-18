@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -28,12 +28,12 @@ public class RtspUnsupportedResponseHandler extends SimpleChannelUpstreamHandler
 	private static Logger s_logger = Logger.getLogger(RtspUnsupportedResponseHandler.class.getName());
 
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
-		HttpRequest req = (HttpRequest)evt.getMessage();
-		
+	public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent evt) throws Exception {
+		final HttpRequest req = (HttpRequest)evt.getMessage();
+
 		s_logger.warning("Method " + req.getMethod() + " is not supported");
 
-		HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.METHOD_NOT_VALID);
+		final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.METHOD_NOT_VALID);
 		ctx.getChannel().write(response);
 	}
 }

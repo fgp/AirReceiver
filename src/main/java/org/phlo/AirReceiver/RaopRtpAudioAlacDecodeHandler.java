@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -41,7 +41,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	public static final int FormatOption82 = 8;
 	public static final int FormatOption86 = 9;
 	public static final int FormatOption8a_rate = 10;
-	
+
 	private static final AudioFormat AudioOutputFormat = new AudioFormat(
 		44100 /* sample rate */,
 		16 /* bits per sample */,
@@ -49,7 +49,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 		false /* unsigned */,
 		true /* big endian */
 	);
-	
+
 	/**
 	 * Number of samples per ALAC frame (packet).
 	 * One sample here means *two* amplitues, one
@@ -57,20 +57,20 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	 */
 	private final int m_samplesPerFrame;
 	private final AlacFile m_alacFile;
-	
-	public RaopRtpAudioAlacDecodeHandler(String[] formatOptions)
+
+	public RaopRtpAudioAlacDecodeHandler(final String[] formatOptions)
 		throws ProtocolException
 	{
 		m_samplesPerFrame = Integer.valueOf(formatOptions[FormatOptionSamplesPerFrame]);
-		
-		int bitsPerSample = Integer.valueOf(formatOptions[FormatOptionBitsPerSample]);
+
+		final int bitsPerSample = Integer.valueOf(formatOptions[FormatOptionBitsPerSample]);
 		if (bitsPerSample != 16)
 			throw new ProtocolException("Sample size must be 16, but was " + bitsPerSample);
-		
-		int sampleRate = Integer.valueOf(formatOptions[FormatOption8a_rate]);
+
+		final int sampleRate = Integer.valueOf(formatOptions[FormatOption8a_rate]);
 		if (sampleRate != 44100)
 			throw new ProtocolException("Sample rate must be 44100, but was " + sampleRate);
-		
+
 		m_alacFile = AlacDecodeUtils.create_alac(bitsPerSample, 2);
 		m_alacFile.setinfo_max_samples_per_frame = m_samplesPerFrame;
 		m_alacFile.setinfo_7a = Integer.valueOf(formatOptions[FormatOption7a]);
@@ -83,19 +83,19 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 		m_alacFile.setinfo_82 = Integer.valueOf(formatOptions[FormatOption82]);
 		m_alacFile.setinfo_86 = Integer.valueOf(formatOptions[FormatOption86]);
 		m_alacFile.setinfo_8a_rate = sampleRate;
-		
+
 		s_logger.info("Created ALAC decode for options " + Arrays.toString(formatOptions));
 	}
-	
+
 	@Override
-	protected synchronized Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
+	protected synchronized Object decode(final ChannelHandlerContext ctx, final Channel channel, final Object msg)
 		throws Exception
 	{
 		if (!(msg instanceof RaopRtpPacket.Audio))
 			return msg;
-		
-		RaopRtpPacket.Audio alacPacket = (RaopRtpPacket.Audio)msg;
-		
+
+		final RaopRtpPacket.Audio alacPacket = (RaopRtpPacket.Audio)msg;
+
 		/* The ALAC decode sometimes reads beyond the input's bounds
 		 * (but later discards the data). To alleviate, we allocate
 		 * 3 spare bytes at input buffer's end.
@@ -106,13 +106,13 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 		/* Decode ALAC to PCM */
 		final int[] pcmSamples = new int[m_samplesPerFrame * 2];
 		final int pcmSamplesBytes = AlacDecodeUtils.decode_frame(m_alacFile, alacBytes, pcmSamples, m_samplesPerFrame);
-		
+
 		/* decode_frame() returns the number of *bytes*, not samples! */
 		final int pcmSamplesLength = pcmSamplesBytes / 4;
-		Level level = Level.FINEST;
+		final Level level = Level.FINEST;
 		if (s_logger.isLoggable(level))
 			s_logger.log(level, "Decoded " + alacBytes.length + " bytes of ALAC audio data to " + pcmSamplesLength + " PCM samples");
-		
+
 		/* Complain if the sender doesn't honour it's commitment */
 		if (pcmSamplesLength != m_samplesPerFrame)
 			throw new ProtocolException("Frame declared to contain " + m_samplesPerFrame + ", but contained " + pcmSamplesLength);
@@ -134,12 +134,12 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 			throw new ProtocolException("Packet type " + alacPacket.getClass() + " is not supported by the ALAC decoder");
 		for(int i=0; i < pcmSamples.length; ++i) {
 			/* Convert sample to unsigned PCM */
-			int pcmSampleUnsigned = pcmSamples[i] + 0x8000;
-			
+			final int pcmSampleUnsigned = pcmSamples[i] + 0x8000;
+
 			pcmPacket.getPayload().setByte(2*i, (pcmSampleUnsigned & 0xff00) >> 8);
 			pcmPacket.getPayload().setByte(2*i + 1, pcmSampleUnsigned & 0x00ff);
 		}
-		
+
 		return pcmPacket;
 	}
 
@@ -152,7 +152,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	public int getFramesPerPacket() {
 		return m_samplesPerFrame;
 	}
-	
+
 	@Override
 	public double getPacketsPerSecond() {
 		return getAudioFormat().getSampleRate() / (double)getFramesPerPacket();

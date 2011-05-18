@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -20,11 +20,11 @@ package org.phlo.AirReceiver;
 public interface AudioClock {
 	double getNowSecondsTime();
 	long getNowFrameTime();
-	
+
 	double getNextSecondsTime();
 	long getNextFrameTime();
-	
+
 	double convertFrameToSecondsTime(long frameTime);
-	
+
 	void setFrameTime(long frameTime, double secondsTime);
 }

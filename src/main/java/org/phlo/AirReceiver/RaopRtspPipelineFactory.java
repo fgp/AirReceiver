@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -23,8 +23,8 @@ import org.jboss.netty.handler.codec.rtsp.*;
 public class RaopRtspPipelineFactory implements ChannelPipelineFactory {
 	@Override
 	public ChannelPipeline getPipeline() throws Exception {
-		ChannelPipeline pipeline = Channels.pipeline();
-		
+		final ChannelPipeline pipeline = Channels.pipeline();
+
 		pipeline.addLast("closeOnShutdownHandler", AirReceiver.CloseOnShutdownHandler);
 		pipeline.addLast("exceptionLogger", new ExceptionLoggingHandler());
 		pipeline.addLast("decoder", new RtspRequestDecoder());
@@ -36,7 +36,7 @@ public class RaopRtspPipelineFactory implements ChannelPipelineFactory {
 		pipeline.addLast("options", new RaopRtspOptionsHandler());
 		pipeline.addLast("audio", new RaopAudioHandler(AirReceiver.ExecutorService));
 		pipeline.addLast("unsupportedResponse", new RtspUnsupportedResponseHandler());
-		
+
 		return pipeline;
 	}
 

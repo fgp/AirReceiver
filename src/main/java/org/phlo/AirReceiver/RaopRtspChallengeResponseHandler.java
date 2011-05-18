@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -29,21 +29,21 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 {
 	private static final String HeaderChallenge = "Apple-Challenge";
 	private static final String HeaderSignature = "Apple-Response";
-	
+
 	private final byte[] m_hwAddress;
 	private final Cipher m_rsaPkCS1PaddingCipher = AirTunesKeys.getCipher("RSA/None/PKCS1Padding", "BC");
-	
+
 	private byte[] m_challenge;
 	private InetAddress m_localAddress;
-	
+
 	public RaopRtspChallengeResponseHandler(final byte[] hwAddress) {
 		assert hwAddress.length == 6;
 
 		m_hwAddress = hwAddress;
 	}
-	
+
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+	public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent evt)
 		throws Exception
 	{
 		final HttpRequest req = (HttpRequest)evt.getMessage();
@@ -52,11 +52,11 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 			if (req.containsHeader(HeaderChallenge)) {
 				/* The challenge is sent without padding! */
 				final byte[] challenge = Base64.decodeUnpadded(req.getHeader(HeaderChallenge));
-				
+
 				/* Verify that we got 16 bytes */
 				if (challenge.length != 16)
 					throw new ProtocolException("Invalid Apple-Challenge header, " + challenge.length + " instead of 16 bytes");
-				
+
 				/* Remember challenge and local address.
 				 * Both are required to compute the response
 				 */
@@ -69,24 +69,24 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 				m_localAddress = null;
 			}
 		}
-		
+
 		super.messageReceived(ctx, evt);
 	}
-	
+
 	@Override
-	public void writeRequested(ChannelHandlerContext ctx, MessageEvent evt)
+	public void writeRequested(final ChannelHandlerContext ctx, final MessageEvent evt)
 		throws Exception
 	{
 		final HttpResponse resp = (HttpResponse)evt.getMessage();
-		
+
 		synchronized(this) {
 			if (m_challenge != null) {
 				try {
 					/* Get appropriate response to challenge and
 					 * add to the response base-64 encoded. XXX
 					 */
-					String sig = Base64.encodePadded(getSignature());
-					
+					final String sig = Base64.encodePadded(getSignature());
+
 					resp.setHeader(HeaderSignature, sig);
 				}
 				finally {
@@ -96,26 +96,26 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 				}
 			}
 		}
-		
+
 		super.writeRequested(ctx, evt);
 	}
-	
+
 	private byte[] getSignature() {
 		final ByteBuffer sigData = ByteBuffer.allocate(16 /* challenge */ + 16 /* ipv6 address */ + 6 /* hw address*/);
-		
+
 		sigData.put(m_challenge);
 		sigData.put(m_localAddress.getAddress());
 		sigData.put(m_hwAddress);
 		while (sigData.hasRemaining())
 			sigData.put((byte)0);
-		
+
 		try {
 			synchronized(m_rsaPkCS1PaddingCipher) {
 				m_rsaPkCS1PaddingCipher.init(Cipher.ENCRYPT_MODE, AirTunesKeys.PrivateKey);
 				return m_rsaPkCS1PaddingCipher.doFinal(sigData.array());
 			}
 		}
-		catch (Exception e) {
+		catch (final Exception e) {
 			throw new RuntimeException("Unable to sign response", e);
 		}
 	}

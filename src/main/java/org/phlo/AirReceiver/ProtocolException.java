@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -19,7 +19,7 @@ package org.phlo.AirReceiver;
 
 @SuppressWarnings("serial")
 public class ProtocolException extends Exception {
-	ProtocolException(String message) {
+	ProtocolException(final String message) {
 		super(message);
 	}
 }

@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -29,29 +29,30 @@ public class RtspLoggingHandler extends SimpleChannelHandler
 {
 	private static final Logger s_logger = Logger.getLogger(RtspLoggingHandler.class.getName());
 
-	public void channelConnected(ChannelHandlerContext ctx, ChannelStateEvent e)
+	@Override
+	public void channelConnected(final ChannelHandlerContext ctx, final ChannelStateEvent e)
 		throws Exception
 	{
 		s_logger.info("Client " + e.getChannel().getRemoteAddress() + " connected on " + e.getChannel().getLocalAddress());
 	}
-	
+
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+	public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent evt)
 		throws Exception
 	{
-		HttpRequest req = (HttpRequest)evt.getMessage();
-		
-		Level level = Level.FINE;
+		final HttpRequest req = (HttpRequest)evt.getMessage();
+
+		final Level level = Level.FINE;
 		if (s_logger.isLoggable(level)) {
-			String content = req.getContent().toString(Charset.defaultCharset());
-			
-			StringBuilder s = new StringBuilder();
+			final String content = req.getContent().toString(Charset.defaultCharset());
+
+			final StringBuilder s = new StringBuilder();
 			s.append(">");
 			s.append(req.getMethod());
 			s.append(" ");
 			s.append(req.getUri());
 			s.append("\n");
-			for(Map.Entry<String, String> header: req.getHeaders()) {
+			for(final Map.Entry<String, String> header: req.getHeaders()) {
 				s.append("  ");
 				s.append(header.getKey());
 				s.append(": ");
@@ -61,25 +62,25 @@ public class RtspLoggingHandler extends SimpleChannelHandler
 			s.append(content);
 			s_logger.log(Level.FINE, s.toString());
 		}
-		
+
 		super.messageReceived(ctx, evt);
 	}
-	
+
 	@Override
-	public void writeRequested(ChannelHandlerContext ctx, MessageEvent evt)
+	public void writeRequested(final ChannelHandlerContext ctx, final MessageEvent evt)
 		throws Exception
 	{
-		HttpResponse resp = (HttpResponse)evt.getMessage();
-		
-		Level level = Level.FINE;
+		final HttpResponse resp = (HttpResponse)evt.getMessage();
+
+		final Level level = Level.FINE;
 		if (s_logger.isLoggable(level)) {
-			StringBuilder s = new StringBuilder();
+			final StringBuilder s = new StringBuilder();
 			s.append("<");
 			s.append(resp.getStatus().getCode());
 			s.append(" ");
 			s.append(resp.getStatus().getReasonPhrase());
 			s.append("\n");
-			for(Map.Entry<String, String> header: resp.getHeaders()) {
+			for(final Map.Entry<String, String> header: resp.getHeaders()) {
 				s.append("  ");
 				s.append(header.getKey());
 				s.append(": ");

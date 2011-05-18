@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -20,16 +20,16 @@ package org.phlo.AirReceiver;
 import org.jboss.netty.buffer.ChannelBuffer;
 
 public abstract class RaopRtpPacket extends RtpPacket {
-	public static long getBeUInt(ChannelBuffer buffer, int index) {
-		return (long)(
+	public static long getBeUInt(final ChannelBuffer buffer, final int index) {
+		return (
 			((buffer.getByte(index+0) & 0xffL) << 24) |
 			((buffer.getByte(index+1) & 0xffL) << 16) |
 			((buffer.getByte(index+2) & 0xffL) << 8) |
 			((buffer.getByte(index+3) & 0xffL) << 0)
 		);
 	}
-	
-	public static void setBeUInt(ChannelBuffer buffer, int index, long value) {
+
+	public static void setBeUInt(final ChannelBuffer buffer, final int index, final long value) {
 		assert (value & ~0xffffffffL) == 0;
 		buffer.setByte(index+0, (int)((value & 0xff000000L) >> 24));
 		buffer.setByte(index+1, (int)((value & 0x00ff0000L) >> 16));
@@ -37,68 +37,68 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		buffer.setByte(index+3, (int)((value & 0x000000ffL) >> 0));
 	}
 
-	public static int getBeUInt16(ChannelBuffer buffer, int index) {
+	public static int getBeUInt16(final ChannelBuffer buffer, final int index) {
 		return (int)(
 			((buffer.getByte(index+0) & 0xffL) << 8) |
 			((buffer.getByte(index+1) & 0xffL) << 0)
 		);
 	}
-	
-	public static void setBeUInt16(ChannelBuffer buffer, int index, int value) {
+
+	public static void setBeUInt16(final ChannelBuffer buffer, final int index, final int value) {
 		assert (value & ~0xffffL) == 0;
 		buffer.setByte(index+0, (int)((value & 0xff00L) >> 8));
 		buffer.setByte(index+1, (int)((value & 0x00ffL) >> 0));
 	}
-	
+
 	public static final class NtpTime {
 		public static final int Length = 8;
-		
+
 		private final ChannelBuffer m_buffer;
-		
-		protected NtpTime(ChannelBuffer buffer) {
+
+		protected NtpTime(final ChannelBuffer buffer) {
 			assert buffer.capacity() == Length;
 			m_buffer = buffer;
 		}
-		
+
 		public long getSeconds() {
 			return getBeUInt(m_buffer, 0);
 		}
-		
-		public void setSeconds(long seconds) {
+
+		public void setSeconds(final long seconds) {
 			setBeUInt(m_buffer, 0, seconds);
 		}
-		
+
 		public long getFraction() {
 			return getBeUInt(m_buffer, 4);
 		}
-		
-		public void setFraction(long fraction) {
+
+		public void setFraction(final long fraction) {
 			setBeUInt(m_buffer, 4, fraction);
 		}
-		
+
 		public double getDouble() {
-			return (double)getSeconds() + (double)getFraction() / 0x100000000L;
+			return getSeconds() + (double)getFraction() / 0x100000000L;
 		}
-		
-		public void setDouble(double v) {
+
+		public void setDouble(final double v) {
 			setSeconds((long)v);
-			setFraction((long)((double)0x100000000L * (v - Math.floor(v))));
+			setFraction((long)(0x100000000L * (v - Math.floor(v))));
 		}
 	}
-	
+
 	public static class Timing extends RaopRtpPacket {
 		public static final int Length = RaopRtpPacket.Length + 4 + 8 + 8 + 8;
-		
+
 		protected Timing() {
 			super(Length);
 			setMarker(true);
 			setSequence(7);
 		}
-		
-		protected Timing(ChannelBuffer buffer, int minimumSize) throws ProtocolException {
+
+		protected Timing(final ChannelBuffer buffer, final int minimumSize) throws ProtocolException {
 			super(buffer, minimumSize);
 		}
-		
+
 		public NtpTime getReferenceTime() {
 			return new NtpTime(getBuffer().slice(RaopRtpPacket.Length + 4, 8));
 		}
@@ -110,42 +110,42 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		public NtpTime getSendTime() {
 			return new NtpTime(getBuffer().slice(RaopRtpPacket.Length + 20, 8));
 		}
-		
+
 		@Override
 		public String toString() {
-			StringBuilder s = new StringBuilder();
+			final StringBuilder s = new StringBuilder();
 			s.append(super.toString());
-			
+
 			s.append(" "); s.append("ref="); s.append(getReferenceTime().getDouble());
 			s.append(" "); s.append("recv="); s.append(getReceivedTime().getDouble());
 			s.append(" "); s.append("send="); s.append(getSendTime().getDouble());
-			
+
 			return s.toString();
 		}
 	}
-	
+
 	/**
 	 * Time synchronization request.
-	 * 
+	 *
 	 * The sequence number must always be 7, otherwise
 	 * at least iOS ignores the packet.
 	 */
 	public static final class TimingRequest extends Timing {
 		public static final byte PayloadType = 0x52;
-		
+
 		public TimingRequest() {
 			setPayloadType(PayloadType);
 		}
-		
-		protected TimingRequest(ChannelBuffer buffer) throws ProtocolException {
+
+		protected TimingRequest(final ChannelBuffer buffer) throws ProtocolException {
 			super(buffer, Length);
 		}
 	}
 
 	/**
 	 * Time synchronization response.
-	 * 
-	 * The sequence should match the request's 
+	 *
+	 * The sequence should match the request's
 	 * sequence, which is always 7.
 	 */
 	public static final class TimingResponse extends Timing {
@@ -154,8 +154,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		public TimingResponse() {
 			setPayloadType(PayloadType);
 		}
-		
-		protected TimingResponse(ChannelBuffer buffer) throws ProtocolException {
+
+		protected TimingResponse(final ChannelBuffer buffer) throws ProtocolException {
 			super(buffer, Length);
 		}
 	}
@@ -163,13 +163,13 @@ public abstract class RaopRtpPacket extends RtpPacket {
 	public static final class Sync extends RaopRtpPacket {
 		public static final byte PayloadType = 0x54;
 		public static final int Length = RaopRtpPacket.Length + 4 + 8 + 4;
-		
+
 		public Sync() {
 			super(Length);
 			setPayloadType(PayloadType);
 		}
-		
-		protected Sync(ChannelBuffer buffer) throws ProtocolException {
+
+		protected Sync(final ChannelBuffer buffer) throws ProtocolException {
 			super(buffer, Length);
 		}
 
@@ -177,31 +177,31 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length);
 		}
 
-		public void setTimeStampMinusLatency(long value) {
+		public void setTimeStampMinusLatency(final long value) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length, value);
 		}
 
 		public NtpTime getTime() {
 			return new NtpTime(getBuffer().slice(RaopRtpPacket.Length + 4, 8));
 		}
-		
+
 		public long getTimeStamp() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 8);
 		}
 
-		public void setTimeStamp(long value) {
+		public void setTimeStamp(final long value) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 8, value);
 		}
-		
+
 		@Override
 		public String toString() {
-			StringBuilder s = new StringBuilder();
+			final StringBuilder s = new StringBuilder();
 			s.append(super.toString());
-			
+
 			s.append(" "); s.append("ts-lat="); s.append(getTimeStampMinusLatency());
 			s.append(" "); s.append("ts="); s.append(getTimeStamp());
 			s.append(" "); s.append("time="); s.append(getTime().getDouble());
-			
+
 			return s.toString();
 		}
 	}
@@ -209,23 +209,23 @@ public abstract class RaopRtpPacket extends RtpPacket {
 	public static final class RetransmitRequest extends RaopRtpPacket {
 		public static final byte PayloadType = 0x55;
 		public static final int Length = RaopRtpPacket.Length + 4;
-		
+
 		public RetransmitRequest() {
 			super(Length);
 			setPayloadType(PayloadType);
 			setMarker(true);
 			setSequence(1);
 		}
-		
-		protected RetransmitRequest(ChannelBuffer buffer) throws ProtocolException {
+
+		protected RetransmitRequest(final ChannelBuffer buffer) throws ProtocolException {
 			super(buffer, Length);
 		}
-		
+
 		public int getSequenceFirst() {
 			return getBeUInt16(getBuffer(), RaopRtpPacket.Length);
 		}
 
-		public void setSequenceFirst(int value) {
+		public void setSequenceFirst(final int value) {
 			setBeUInt16(getBuffer(), RaopRtpPacket.Length, value);
 		}
 
@@ -233,28 +233,28 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			return getBeUInt16(getBuffer(), RaopRtpPacket.Length + 2);
 		}
 
-		public void setSequenceCount(int value) {
+		public void setSequenceCount(final int value) {
 			setBeUInt16(getBuffer(), RaopRtpPacket.Length + 2, value);
 		}
-		
+
 		@Override
 		public String toString() {
-			StringBuilder s = new StringBuilder();
+			final StringBuilder s = new StringBuilder();
 			s.append(super.toString());
-			
+
 			s.append(" "); s.append("first="); s.append(getSequenceFirst());
 			s.append(" "); s.append("count="); s.append(getSequenceCount());
-			
+
 			return s.toString();
 		}
 	}
 
 	public static abstract class Audio extends RaopRtpPacket {
-		public Audio(int length) {
+		public Audio(final int length) {
 			super(length);
 		}
-		
-		protected Audio(ChannelBuffer buffer, int minimumSize) throws ProtocolException {
+
+		protected Audio(final ChannelBuffer buffer, final int minimumSize) throws ProtocolException {
 			super(buffer, minimumSize);
 		}
 
@@ -264,86 +264,86 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		abstract public void setSSrc(long sSrc);
 		abstract public ChannelBuffer getPayload();
 	}
-	
+
 	public static final class AudioTransmit extends Audio {
 		public static final byte PayloadType = 0x60;
 		public static final int Length = RaopRtpPacket.Length + 4 + 4;
-		
-		public AudioTransmit(int payloadLength) {
+
+		public AudioTransmit(final int payloadLength) {
 			super(Length + payloadLength);
 			assert payloadLength >= 0;
 
 			setPayloadType(PayloadType);
 		}
-		
-		protected AudioTransmit(ChannelBuffer buffer) throws ProtocolException {
+
+		protected AudioTransmit(final ChannelBuffer buffer) throws ProtocolException {
 			super(buffer, Length);
 		}
-		
+
 		@Override
 		public long getTimeStamp() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length);
 		}
-		
+
 		@Override
-		public void setTimeStamp(long timeStamp) {
+		public void setTimeStamp(final long timeStamp) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length, timeStamp);
 		}
-		
+
 		@Override
 		public long getSSrc() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4);
 		}
-		
+
 		@Override
-		public void setSSrc(long sSrc) {
+		public void setSSrc(final long sSrc) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4, sSrc);
 		}
-		
+
 		@Override
 		public ChannelBuffer getPayload() {
 			return getBuffer().slice(Length, getLength() - Length);
 		}
-		
+
 		@Override
 		public String toString() {
-			StringBuilder s = new StringBuilder();
+			final StringBuilder s = new StringBuilder();
 			s.append(super.toString());
-			
+
 			s.append(" "); s.append("ts="); s.append(getTimeStamp());
 			s.append(" "); s.append("ssrc="); s.append(getSSrc());
 			s.append(" "); s.append("<"); s.append(getPayload().capacity()); s.append(" bytes payload>");
-			
+
 			return s.toString();
 		}
 	}
-	
+
 	public static final class AudioRetransmit extends Audio {
 		public static final byte PayloadType = 0x56;
 		public static final int Length = RaopRtpPacket.Length + 4 + 4 + 4;
-		
-		public AudioRetransmit(int payloadLength) {
+
+		public AudioRetransmit(final int payloadLength) {
 			super(Length + payloadLength);
 			assert payloadLength >= 0;
 
 			setPayloadType(PayloadType);
 		}
-		
-		protected AudioRetransmit(ChannelBuffer buffer) throws ProtocolException {
+
+		protected AudioRetransmit(final ChannelBuffer buffer) throws ProtocolException {
 			super(buffer, Length);
 		}
-				
+
 		/**
 		 * First two bytes after RTP header
 		 */
 		public int getUnknown2Bytes() {
 			return getBeUInt16(getBuffer(), RaopRtpPacket.Length);
 		}
-		
+
 		/**
 		 * First two bytes after RTP header
 		 */
-		public void setUnknown2Bytes(int b) {
+		public void setUnknown2Bytes(final int b) {
 			setBeUInt16(getBuffer(), RaopRtpPacket.Length, b);
 		}
 
@@ -355,56 +355,61 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		public int getOriginalSequence() {
 			return getBeUInt16(getBuffer(), RaopRtpPacket.Length + 2);
 		}
-		
+
 		/**
 		 * This seems is the sequence of the original
 		 * packet (i.e., the sequence we requested to be
 		 * retransmitted).
 		 */
-		public void setOriginalSequence(int seq) {
+		public void setOriginalSequence(final int seq) {
 			setBeUInt16(getBuffer(), RaopRtpPacket.Length + 2, seq);
 		}
 
+		@Override
 		public long getTimeStamp() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4);
 		}
-		
-		public void setTimeStamp(long timeStamp) {
+
+		@Override
+		public void setTimeStamp(final long timeStamp) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4, timeStamp);
 		}
-		
+
+		@Override
 		public long getSSrc() {
 			return getBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 4);
 		}
-		
-		public void setSSrc(long sSrc) {
+
+		@Override
+		public void setSSrc(final long sSrc) {
 			setBeUInt(getBuffer(), RaopRtpPacket.Length + 4 + 4, sSrc);
 		}
-		
+
+		@Override
 		public ChannelBuffer getPayload() {
 			return getBuffer().slice(Length, getLength() - Length);
 		}
-		
+
 		@Override
 		public String toString() {
-			StringBuilder s = new StringBuilder();
+			final StringBuilder s = new StringBuilder();
 			s.append(super.toString());
-			
+
 			s.append(" "); s.append("?="); s.append(getUnknown2Bytes());
 			s.append(" "); s.append("oseq="); s.append(getOriginalSequence());
 			s.append(" "); s.append("ts="); s.append(getTimeStamp());
 			s.append(" "); s.append("ssrc="); s.append(getSSrc());
 			s.append(" "); s.append("<"); s.append(getPayload().capacity()); s.append(" bytes payload>");
-			
+
 			return s.toString();
 		}
 	}
 
-	public static RaopRtpPacket decode(ChannelBuffer buffer)
+	public static RaopRtpPacket decode(final ChannelBuffer buffer)
 		throws ProtocolException
 	{
-		RtpPacket rtpPacket = new RtpPacket(buffer, Length);
-		
+		final RtpPacket rtpPacket = new RtpPacket(buffer, Length);
+
 		switch (rtpPacket.getPayloadType()) {
 			case TimingRequest.PayloadType: return new TimingRequest(buffer);
 			case TimingResponse.PayloadType: return new TimingResponse(buffer);
@@ -415,17 +420,17 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			default: throw new ProtocolException("Invalid PayloadType " + rtpPacket.getPayloadType());
 		}
 	}
-	
-	protected RaopRtpPacket(int length) {
+
+	protected RaopRtpPacket(final int length) {
 		super(length);
 		setVersion((byte)2);
 	}
-	
-	protected RaopRtpPacket(ChannelBuffer buffer, int minimumSize) throws ProtocolException {
+
+	protected RaopRtpPacket(final ChannelBuffer buffer, final int minimumSize) throws ProtocolException {
 		super(buffer, minimumSize);
 	}
-	
-	protected RaopRtpPacket(ChannelBuffer buffer) throws ProtocolException {
+
+	protected RaopRtpPacket(final ChannelBuffer buffer) throws ProtocolException {
 		super(buffer);
 	}
 }

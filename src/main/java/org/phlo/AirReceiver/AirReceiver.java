@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -46,7 +46,7 @@ public class AirReceiver {
     	try {
 			LogManager.getLogManager().readConfiguration(loggingPropertiesStream);
 		}
-    	catch (IOException e) {
+    	catch (final IOException e) {
     		throw new RuntimeException(e.getMessage(), e);
 		}
 	}
@@ -58,7 +58,7 @@ public class AirReceiver {
 	public static final String HardwareAddressString = toHexString(HardwareAddressBytes);
 
 	public static final String HostName = getHostName();
-	
+
 	public static final String AirtunesServiceType = "_raop._tcp.local.";
 
 	public static final short AirtunesServiceRTSPPort = 5000;
@@ -77,21 +77,21 @@ public class AirReceiver {
 		"cn", "0,1",
 		"vn", "3"
 	);
-	
+
 	public static final ExecutorService ExecutorService = Executors.newCachedThreadPool();
-	
+
 	public static final ExecutionHandler RtpExecutionHandler = new ExecutionHandler(
 		new OrderedMemoryAwareThreadPoolExecutor(4, 0, 0)
 	);
-	
+
 	public static final ChannelHandler CloseOnShutdownHandler = new SimpleChannelUpstreamHandler() {
 	    @Override
-	    public void channelOpen(ChannelHandlerContext ctx, ChannelStateEvent e) throws Exception {
+	    public void channelOpen(final ChannelHandlerContext ctx, final ChannelStateEvent e) throws Exception {
 	    	s_allChannels.add(e.getChannel());
 	    	super.channelOpen(ctx, e);
 	    }
 	};
-	
+
 	private static final String AboutMessage =
 		"    AirReceiver\n" +
 		"Copyright (c) 2011 Florian G. Pflug\n" +
@@ -111,14 +111,14 @@ public class AirReceiver {
 		"\n\n" +
 		"    Java ALAC Decoder\n" +
 		"Copyright (c) 2011 Peter McQuillan";
-	
+
 	private static final List<JmDNS> s_jmDNSInstances = new java.util.LinkedList<JmDNS>();
 
 	private static ChannelGroup s_allChannels = new DefaultChannelGroup();
-		
-	private static Map<String, String> map(String... keys_values) {
+
+	private static Map<String, String> map(final String... keys_values) {
 		assert keys_values.length % 2 == 0;
-		Map<String, String> map = new java.util.HashMap<String, String>(keys_values.length / 2);
+		final Map<String, String> map = new java.util.HashMap<String, String>(keys_values.length / 2);
 		for(int i=0; i < keys_values.length; i+=2)
 			map.put(keys_values[i], keys_values[i+1]);
 		return Collections.unmodifiableMap(map);
@@ -140,10 +140,10 @@ public class AirReceiver {
 		else
 			return false;
 	}
-	
+
 	private static byte[] getHardwareAddress() {
 		try {
-	    	for(NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
+	    	for(final NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
 	    		if (iface.isLoopback())
 	    			continue;
 	    		if (iface.isPointToPoint())
@@ -156,75 +156,75 @@ public class AirReceiver {
 		    	    	return Arrays.copyOfRange(ifaceMacAddress, 0, 6);
 		    		}
 	    		}
-	    		catch (Throwable e) {
+	    		catch (final Throwable e) {
 	    			/* Ignore */
 	    		}
 	    	}
 		}
-		catch (Throwable e) {
+		catch (final Throwable e) {
 			/* Ignore */
 		}
-		
+
 		try {
 			final byte[] hostAddress = Arrays.copyOfRange(InetAddress.getLocalHost().getAddress(), 0, 6);
 			s_logger.info("Hardware address is " + toHexString(hostAddress) + " (IP address)");
 			return hostAddress;
 		}
-		catch (Throwable e) {
+		catch (final Throwable e) {
 			/* Ignore */
 		}
 
 		s_logger.info("Hardware address is 00DEADBEEF00 (last resort)");
 		return new byte[] {(byte)0x00, (byte)0xDE, (byte)0xAD, (byte)0xBE, (byte)0xEF, (byte)0x00};
 	}
-	
+
 	private static String getHostName() {
 		try {
 			return InetAddress.getLocalHost().getHostName().split("\\.")[0];
 		}
-		catch (Throwable e) {
+		catch (final Throwable e) {
 			return "AirReceiver";
 		}
 	}
-	
-	private static String toHexString(byte[] bytes) {
-		StringBuilder s = new StringBuilder();
-		for(byte b: bytes) {
-			String h = Integer.toHexString(0x100 | b);
+
+	private static String toHexString(final byte[] bytes) {
+		final StringBuilder s = new StringBuilder();
+		for(final byte b: bytes) {
+			final String h = Integer.toHexString(0x100 | b);
 			s.append(h.substring(h.length() - 2, h.length()).toUpperCase());
 		}
 		return s.toString();
 	}
-	
+
 	public static void onShutdown() {
-		ChannelGroupFuture allChannelsClosed = s_allChannels.close();
-		
+		final ChannelGroupFuture allChannelsClosed = s_allChannels.close();
+
 		synchronized(s_jmDNSInstances) {
-			for(JmDNS jmDNS: s_jmDNSInstances) {
+			for(final JmDNS jmDNS: s_jmDNSInstances) {
 				try {
 					jmDNS.unregisterAllServices();
 					s_logger.info("Unregistered all services on " + jmDNS.getInterface());
 				}
-				catch (IOException e) {
+				catch (final IOException e) {
 					s_logger.info("Failed to unregister some services");
 				}
 			}
 		}
-		
+
 		allChannelsClosed.awaitUninterruptibly();
 	}
-	
-    public static void main(String[] args) throws Exception {
+
+    public static void main(final String[] args) throws Exception {
     	Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
 			@Override
 			public void run() {
 				onShutdown();
 			}
     	}));
-    	
+
     	/* Register BouncyCaster security provider */
     	java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
-    	
+
     	/* Create about dialog */
     	final Dialog aboutDialog = new Dialog((Dialog)null);
     	final GridBagLayout aboutLayout = new GridBagLayout();
@@ -247,7 +247,7 @@ public class AirReceiver {
     	{
 	    	final Button aboutDoneButton = new Button("Done");
 	    	aboutDoneButton.addActionListener(new ActionListener() {
-				@Override public void actionPerformed(ActionEvent evt) { 
+				@Override public void actionPerformed(final ActionEvent evt) {
 					aboutDialog.setVisible(false);
 				}
 	    	});
@@ -263,7 +263,7 @@ public class AirReceiver {
     	aboutDialog.setVisible(false);
     	aboutDialog.setLocationByPlatform(true);
     	aboutDialog.pack();
-    	
+
     	/* Create tray icon */
 		final URL trayIconUrl = AirReceiver.class.getClassLoader().getResource("icon_32.png");
 		final TrayIcon trayIcon = new TrayIcon((new ImageIcon(trayIconUrl, "AirReceiver").getImage()));
@@ -273,7 +273,7 @@ public class AirReceiver {
 		final MenuItem aboutMenuItem = new MenuItem("About");
 		aboutMenuItem.addActionListener(new ActionListener() {
 			@Override
-			public void actionPerformed(ActionEvent evt) {
+			public void actionPerformed(final ActionEvent evt) {
 		    	aboutDialog.setLocationByPlatform(true);
 		    	aboutDialog.setVisible(true);
 			}
@@ -282,7 +282,7 @@ public class AirReceiver {
 		final MenuItem exitMenuItem = new MenuItem("Quit");
 		exitMenuItem.addActionListener(new ActionListener() {
 			@Override
-			public void actionPerformed(ActionEvent evt) {
+			public void actionPerformed(final ActionEvent evt) {
 				onShutdown();
 				System.exit(0);
 			}
@@ -290,14 +290,14 @@ public class AirReceiver {
 		popupMenu.add(exitMenuItem);
 		trayIcon.setPopupMenu(popupMenu);
 		SystemTray.getSystemTray().add(trayIcon);
-        
+
         /* Create AirTunes RTSP pipeline factory.
          * NOTE: We immediatly create a test channel. This isn't necessary,
          * but uncoveres failures earlier
          */
-        ChannelPipelineFactory airTunesRtspPipelineFactory = new RaopRtspPipelineFactory();
+        final ChannelPipelineFactory airTunesRtspPipelineFactory = new RaopRtspPipelineFactory();
         airTunesRtspPipelineFactory.getPipeline();
-        
+
         /* Create AirTunes RTSP server */
 		final ServerBootstrap airTunesRtspBootstrap = new ServerBootstrap(new NioServerSocketChannelFactory(ExecutorService, ExecutorService));
 		airTunesRtspBootstrap.setPipelineFactory(airTunesRtspPipelineFactory);
@@ -306,28 +306,28 @@ public class AirReceiver {
 		airTunesRtspBootstrap.setOption("child.keepAlive", true);
 		s_allChannels.add(airTunesRtspBootstrap.bind(new InetSocketAddress(Inet4Address.getByName("0.0.0.0"), AirtunesServiceRTSPPort)));
         s_logger.info("Launched RTSP service on port " + AirtunesServiceRTSPPort);
-        
+
     	/* Create mDNS responders. Also arrange for all services
     	 * to be unregistered on VM shutdown
     	 */
         synchronized(s_jmDNSInstances) {
-	    	for(NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
+	    	for(final NetworkInterface iface: Collections.list(NetworkInterface.getNetworkInterfaces())) {
 	    		if (iface.isLoopback())
 	    			continue;
 	    		if (iface.isPointToPoint())
 	    			continue;
 	    		if (!iface.isUp())
 	    			continue;
-	
+
 	    		for(final InetAddress addr: Collections.list(iface.getInetAddresses())) {
 	    			if (!(addr instanceof Inet4Address) && !(addr instanceof Inet6Address))
 	    				continue;
-	    			
+
 					try {
 						/* Create mDNS responder for address */
 				    	final JmDNS jmDNS = JmDNS.create(addr, HostName + "-jmdns");
 				    	s_jmDNSInstances.add(jmDNS);
-				    	
+
 				        /* Publish RAOP service */
 				        final ServiceInfo airTunesServiceInfo = ServiceInfo.create(
 				    		AirtunesServiceType,
@@ -339,7 +339,7 @@ public class AirReceiver {
 				        jmDNS.registerService(airTunesServiceInfo);
 						s_logger.info("Registered AirTunes service '" + airTunesServiceInfo.getName() + "' on " + addr);
 					}
-					catch (Throwable e) {
+					catch (final Throwable e) {
 						s_logger.log(Level.SEVERE, "Failed to publish service on " + addr, e);
 					}
 	    		}

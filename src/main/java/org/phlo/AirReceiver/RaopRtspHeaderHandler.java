@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -23,19 +23,19 @@ import org.jboss.netty.handler.codec.http.*;
 public class RaopRtspHeaderHandler extends SimpleChannelHandler
 {
 	private static final String HeaderCSeq = "CSeq";
-	
+
 	private static final String HeaderAudioJackStatus = "Audio-Jack-Status";
 	private static final String HeaderAudioJackStatusDefault = "connected; type=analog";
-	
+
 	/*
 	private static final String HeaderAudioLatency = "Audio-Latency";
 	private static final long   HeaderAudioLatencyFrames = 88400;
 	*/
 
 	private String m_cseq;
-	
+
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+	public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent evt)
 		throws Exception
 	{
 		final HttpRequest req = (HttpRequest)evt.getMessage();
@@ -48,24 +48,24 @@ public class RaopRtspHeaderHandler extends SimpleChannelHandler
 				throw new ProtocolException("No CSeq header");
 			}
 		}
-		
+
 		super.messageReceived(ctx, evt);
 	}
-	
+
 	@Override
-	public void writeRequested(ChannelHandlerContext ctx, MessageEvent evt)
+	public void writeRequested(final ChannelHandlerContext ctx, final MessageEvent evt)
 		throws Exception
 	{
 		final HttpResponse resp = (HttpResponse)evt.getMessage();
-		
+
 		synchronized(this) {
 			if (m_cseq != null)
 				resp.setHeader(HeaderCSeq, m_cseq);
-			
+
 			resp.setHeader(HeaderAudioJackStatus, HeaderAudioJackStatusDefault);
 			//resp.setHeader(HeaderAudioLatency, Long.toString(HeaderAudioLatencyFrames));
 		}
-		
+
 		super.writeRequested(ctx, evt);
 	}
 }

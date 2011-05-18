@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -22,7 +22,7 @@ import org.jboss.netty.handler.codec.oneone.OneToOneEncoder;
 
 public class RtpEncodeHandler extends OneToOneEncoder {
 	@Override
-	protected Object encode(ChannelHandlerContext ctx, Channel channel, Object msg)
+	protected Object encode(final ChannelHandlerContext ctx, final Channel channel, final Object msg)
 		throws Exception
 	{
 		if (msg instanceof RtpPacket)

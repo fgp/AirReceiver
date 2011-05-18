@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -24,17 +24,17 @@ public class RunningWeightedAverage {
 	public boolean m_empty = true;
 	public int m_index = 0;
 	public double m_average = Double.NaN;
-	
-	RunningWeightedAverage(int windowLength) {
+
+	RunningWeightedAverage(final int windowLength) {
 		m_length = windowLength;
 		m_values = new double[m_length];
 		m_weights = new double[m_length];
 	}
-	
+
 	public boolean isEmpty() {
 		return m_empty;
 	}
-	
+
 	public void add(final double value, final double weight) {
 		m_values[m_index] = value;
 		m_weights[m_index] = weight;
@@ -42,7 +42,7 @@ public class RunningWeightedAverage {
 		m_average = Double.NaN;
 		m_empty = false;
 	}
-	
+
 	public double get() {
 		if (!m_empty && Double.isNaN(m_average)) {
 			double vsum = 0;
@@ -54,7 +54,7 @@ public class RunningWeightedAverage {
 			if (wsum != 0.0)
 				m_average = vsum / wsum;
 		}
-		
+
 		return m_average;
 	}
 }

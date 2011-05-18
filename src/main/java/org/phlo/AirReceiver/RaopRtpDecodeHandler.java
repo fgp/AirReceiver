@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -27,16 +27,16 @@ public class RaopRtpDecodeHandler extends OneToOneDecoder {
 	private static final Logger s_logger = Logger.getLogger(RaopRtpDecodeHandler.class.getName());
 
 	@Override
-	protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
+	protected Object decode(final ChannelHandlerContext ctx, final Channel channel, final Object msg)
 		throws Exception
 	{
 		if (msg instanceof ChannelBuffer) {
 			final ChannelBuffer buffer = (ChannelBuffer)msg;
-			
+
 			try {
 				return RaopRtpPacket.decode(buffer);
 			}
-			catch (InvalidPacketException e1) {
+			catch (final InvalidPacketException e1) {
 				s_logger.warning(e1.getMessage());
 				return buffer;
 			}

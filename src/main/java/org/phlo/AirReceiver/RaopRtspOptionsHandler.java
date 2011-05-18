@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -32,13 +32,13 @@ public class RaopRtspOptionsHandler extends SimpleChannelUpstreamHandler {
 		RaopRtspMethods.OPTIONS.getName() + ", " +
 		RaopRtspMethods.GET_PARAMETER.getName() + ", " +
 		RaopRtspMethods.SET_PARAMETER.getName();
-	
+
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
-		HttpRequest req = (HttpRequest)evt.getMessage();
-		
+	public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent evt) throws Exception {
+		final HttpRequest req = (HttpRequest)evt.getMessage();
+
 		if (RtspMethods.OPTIONS.equals(req.getMethod())) {
-	        HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0, RtspResponseStatuses.OK);
+	        final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0, RtspResponseStatuses.OK);
 	        response.setHeader(RtspHeaders.Names.PUBLIC, Options);
 			ctx.getChannel().write(response);
 		}

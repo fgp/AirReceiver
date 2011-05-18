@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -31,26 +31,26 @@ public class RtspErrorResponseHandler extends SimpleChannelHandler {
 	 * after the first one.
 	 */
 	private boolean m_messageTriggeredException = false;
-	
+
 	@Override
-    public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt) throws Exception {
+    public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent evt) throws Exception {
 		synchronized(this) {
 			m_messageTriggeredException = false;
 		}
-		
+
 		super.messageReceived(ctx, evt);
     }
-	
+
 	@Override
-	public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent evt) throws Exception {
+	public void exceptionCaught(final ChannelHandlerContext ctx, final ExceptionEvent evt) throws Exception {
 		synchronized(this) {
 			if (m_messageTriggeredException)
 				return;
 			m_messageTriggeredException = true;
 		}
-		
+
 		if (ctx.getChannel().isConnected()) {
-			HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.INTERNAL_SERVER_ERROR);
+			final HttpResponse response = new DefaultHttpResponse(RtspVersions.RTSP_1_0,  RtspResponseStatuses.INTERNAL_SERVER_ERROR);
 			ctx.getChannel().write(response).addListener(ChannelFutureListener.CLOSE);
 		}
 	}

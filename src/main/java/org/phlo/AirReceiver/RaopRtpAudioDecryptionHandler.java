@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -34,15 +34,15 @@ public class RaopRtpAudioDecryptionHandler extends OneToOneDecoder {
 		m_aesKey = aesKey;
 		m_aesIv = aesIv;
 	}
-	
+
 	@Override
-	protected synchronized Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
+	protected synchronized Object decode(final ChannelHandlerContext ctx, final Channel channel, final Object msg)
 		throws Exception
 	{
 		if (msg instanceof RaopRtpPacket.Audio) {
-			RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)msg;
-			ChannelBuffer audioPayload = audioPacket.getPayload();
-			
+			final RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)msg;
+			final ChannelBuffer audioPayload = audioPacket.getPayload();
+
 			synchronized(this) {
 				m_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
 				for(int i=0; (i + 16) <= audioPayload.capacity(); i += 16) {
@@ -53,7 +53,7 @@ public class RaopRtpAudioDecryptionHandler extends OneToOneDecoder {
 				}
 			}
 		}
-		
+
 		return msg;
 	}
 }
