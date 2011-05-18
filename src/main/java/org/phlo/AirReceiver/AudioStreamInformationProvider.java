@@ -19,8 +19,25 @@ package org.phlo.AirReceiver;
 
 import javax.sound.sampled.AudioFormat;
 
+/**
+ * Provides information about an audio stream
+ */
 public interface AudioStreamInformationProvider {
+	/**
+	 * The JavaSoune audio format of the streamed audio
+	 * @return the AudioFormat
+	 */
 	public AudioFormat getAudioFormat();
+	
+	/**
+	 * Average frames per second
+	 * @return frames per second
+	 */
 	public int getFramesPerPacket();
+	
+	/**
+	 * Average packets per second
+	 * @return packets per second
+	 */
 	public double getPacketsPerSecond();
 }

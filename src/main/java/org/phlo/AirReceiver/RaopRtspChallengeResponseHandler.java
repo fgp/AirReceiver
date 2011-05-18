@@ -25,13 +25,17 @@ import javax.crypto.*;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.*;
 
+/**
+ * Adds an {@code Apple-Response} header to a response if the request contain
+ * an {@code Apple-Request}Êheader.
+ */
 public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 {
 	private static final String HeaderChallenge = "Apple-Challenge";
 	private static final String HeaderSignature = "Apple-Response";
 
 	private final byte[] m_hwAddress;
-	private final Cipher m_rsaPkCS1PaddingCipher = AirTunesKeys.getCipher("RSA/None/PKCS1Padding", "BC");
+	private final Cipher m_rsaPkCS1PaddingCipher = AirTunesCrytography.getCipher("RSA/None/PKCS1Padding");
 
 	private byte[] m_challenge;
 	private InetAddress m_localAddress;
@@ -110,10 +114,8 @@ public class RaopRtspChallengeResponseHandler extends SimpleChannelHandler
 			sigData.put((byte)0);
 
 		try {
-			synchronized(m_rsaPkCS1PaddingCipher) {
-				m_rsaPkCS1PaddingCipher.init(Cipher.ENCRYPT_MODE, AirTunesKeys.PrivateKey);
-				return m_rsaPkCS1PaddingCipher.doFinal(sigData.array());
-			}
+			m_rsaPkCS1PaddingCipher.init(Cipher.ENCRYPT_MODE, AirTunesCrytography.PrivateKey);
+			return m_rsaPkCS1PaddingCipher.doFinal(sigData.array());
 		}
 		catch (final Exception e) {
 			throw new RuntimeException("Unable to sign response", e);

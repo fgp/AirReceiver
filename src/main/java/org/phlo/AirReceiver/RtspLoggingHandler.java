@@ -25,6 +25,9 @@ import java.util.logging.Logger;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.*;
 
+/**
+ * Logs RTSP requests and responses.
+ */
 public class RtspLoggingHandler extends SimpleChannelHandler
 {
 	private static final Logger s_logger = Logger.getLogger(RtspLoggingHandler.class.getName());

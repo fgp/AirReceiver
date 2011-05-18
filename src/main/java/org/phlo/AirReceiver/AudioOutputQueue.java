@@ -24,6 +24,12 @@ import java.util.logging.Logger;
 
 import javax.sound.sampled.*;
 
+/**
+ * Audio output queue.
+ * 
+ * Serves an an {@link AudioClock} and allows samples to be queued
+ * for playback at a specific time.
+ */
 public class AudioOutputQueue implements AudioClock {
 	private static Logger s_logger = Logger.getLogger(AudioOutputQueue.class.getName());
 

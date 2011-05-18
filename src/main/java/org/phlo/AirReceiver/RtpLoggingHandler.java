@@ -24,6 +24,9 @@ import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelHandler;
 
+/**
+ * Logs incoming and outgoing RTP packets
+ */
 public class RtpLoggingHandler extends SimpleChannelHandler {
 	private static final Logger s_logger = Logger.getLogger(RtpLoggingHandler.class.getName());
 

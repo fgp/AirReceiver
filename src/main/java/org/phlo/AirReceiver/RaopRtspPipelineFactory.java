@@ -20,12 +20,16 @@ package org.phlo.AirReceiver;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.rtsp.*;
 
+/**
+ * Factory for AirTunes/RAOP RTSP channels
+ */
 public class RaopRtspPipelineFactory implements ChannelPipelineFactory {
 	@Override
 	public ChannelPipeline getPipeline() throws Exception {
 		final ChannelPipeline pipeline = Channels.pipeline();
 
-		pipeline.addLast("closeOnShutdownHandler", AirReceiver.CloseOnShutdownHandler);
+		pipeline.addLast("executionHandler", AirReceiver.ChannelExecutionHandler);
+		pipeline.addLast("closeOnShutdownHandler", AirReceiver.CloseChannelOnShutdownHandler);
 		pipeline.addLast("exceptionLogger", new ExceptionLoggingHandler());
 		pipeline.addLast("decoder", new RtspRequestDecoder());
 		pipeline.addLast("encoder", new RtspResponseEncoder());

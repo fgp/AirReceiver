@@ -23,6 +23,9 @@ import org.jboss.netty.buffer.*;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
 
+/**
+ * Decodes incoming packets, emitting instances of {@link RaopRtpPacket}
+ */
 public class RaopRtpDecodeHandler extends OneToOneDecoder {
 	private static final Logger s_logger = Logger.getLogger(RaopRtpDecodeHandler.class.getName());
 

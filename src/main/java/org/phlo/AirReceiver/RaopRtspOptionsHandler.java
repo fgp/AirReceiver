@@ -21,6 +21,13 @@ import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.*;
 import org.jboss.netty.handler.codec.rtsp.*;
 
+/**
+ * Handles RTSP OPTIONS requests.
+ * <p>
+ * iTunes sends those to verify that we're a legitimate device,
+ * by including a Apple-Request header and expecting an appropriate
+ * Apple-Response
+ */
 public class RaopRtspOptionsHandler extends SimpleChannelUpstreamHandler {
 	private static final String Options =
 		RaopRtspMethods.ANNOUNCE.getName() + ", " +

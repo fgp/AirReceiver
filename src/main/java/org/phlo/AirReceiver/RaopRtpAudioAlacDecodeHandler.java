@@ -27,9 +27,20 @@ import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
 
 import com.beatofthedrum.alacdecoder.*;
 
+/**
+ * Decodes the ALAC audio data in incoming audio packets to big endian unsigned PCM.
+ * Also serves as an {@link AudioStreamInformationProvider}
+ * 
+ * This class assumes that ALAC requires no inter-packet state - it doesn't make
+ * any effort to feed the packets to ALAC in the correct order.
+ */
 public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements AudioStreamInformationProvider {
 	private static Logger s_logger = Logger.getLogger(RaopRtpAudioAlacDecodeHandler.class.getName());
 
+	/* There are the indices into the SDP format options at which
+	 * the sessions appear
+	 */
+	
 	public static final int FormatOptionSamplesPerFrame = 0;
 	public static final int FormatOption7a = 1;
 	public static final int FormatOptionBitsPerSample = 2;
@@ -42,6 +53,9 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	public static final int FormatOption86 = 9;
 	public static final int FormatOption8a_rate = 10;
 
+	/**
+	 * The {@link AudioFormat} that corresponds to the output produced by the decoder
+	 */
 	private static final AudioFormat AudioOutputFormat = new AudioFormat(
 		44100 /* sample rate */,
 		16 /* bits per sample */,
@@ -56,17 +70,30 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 	 * for the left channel and one for the right
 	 */
 	private final int m_samplesPerFrame;
+	
+	/**
+	 * Decoder state
+	 */
 	private final AlacFile m_alacFile;
 
+	/**
+	 * Creates an ALAC decoder instance from a list of format options as
+	 * they appear in the SDP session announcement.
+	 * 
+	 * @param formatOptions list of format options
+	 * @throws ProtocolException if the format options are invalid for ALAC
+	 */
 	public RaopRtpAudioAlacDecodeHandler(final String[] formatOptions)
 		throws ProtocolException
 	{
 		m_samplesPerFrame = Integer.valueOf(formatOptions[FormatOptionSamplesPerFrame]);
 
+		/* We support only 16-bit ALAC */
 		final int bitsPerSample = Integer.valueOf(formatOptions[FormatOptionBitsPerSample]);
 		if (bitsPerSample != 16)
 			throw new ProtocolException("Sample size must be 16, but was " + bitsPerSample);
 
+		/* We support only 44100 kHz */
 		final int sampleRate = Integer.valueOf(formatOptions[FormatOption8a_rate]);
 		if (sampleRate != 44100)
 			throw new ProtocolException("Sample rate must be 44100, but was " + sampleRate);
@@ -118,7 +145,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 			throw new ProtocolException("Frame declared to contain " + m_samplesPerFrame + ", but contained " + pcmSamplesLength);
 
 		/* Assemble PCM audio packet from original packet header and decoded data.
-		 * The ALAC decode emits signed PCM samples, so we must convert them to unsigned
+		 * The ALAC decode emits little endian PCM samples, so we must convert them to big endian
 		 * PCM before stuffing them into the packet
 		 */
 		
@@ -135,7 +162,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 			throw new ProtocolException("Packet type " + alacPacket.getClass() + " is not supported by the ALAC decoder");
 
 		for(int i=0; i < pcmSamples.length; ++i) {
-			/* Convert sample to unsigned PCM */
+			/* Convert sample to big endian PCM */
 			final int pcmSampleUnsigned = pcmSamples[i] + 0x8000;
 
 			pcmPacket.getPayload().setByte(2*i, (pcmSampleUnsigned & 0xff00) >> 8);

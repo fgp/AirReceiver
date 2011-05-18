@@ -20,6 +20,9 @@ package org.phlo.AirReceiver;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.*;
 
+/**
+ * Adds a few default headers to every RTSP response
+ */
 public class RaopRtspHeaderHandler extends SimpleChannelHandler
 {
 	private static final String HeaderCSeq = "CSeq";

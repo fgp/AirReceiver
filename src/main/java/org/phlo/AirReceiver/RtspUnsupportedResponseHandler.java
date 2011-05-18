@@ -24,6 +24,10 @@ import org.jboss.netty.handler.codec.http.*;
 import org.jboss.netty.handler.codec.rtsp.RtspResponseStatuses;
 import org.jboss.netty.handler.codec.rtsp.RtspVersions;
 
+/**
+ * Sends a METHOD NOT VALID response if no other channel handler
+ * takes responsibility for a RTSP message.
+ */
 public class RtspUnsupportedResponseHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RtspUnsupportedResponseHandler.class.getName());
 

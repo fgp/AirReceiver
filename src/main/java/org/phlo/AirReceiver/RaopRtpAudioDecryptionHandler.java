@@ -25,9 +25,23 @@ import org.jboss.netty.buffer.*;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
 
+/**
+ * De-crypt AES encoded audio data
+ */
 public class RaopRtpAudioDecryptionHandler extends OneToOneDecoder {
-	private final Cipher m_aesCipher = AirTunesKeys.getCipher("AES/CBC/NoPadding", "BC");
+	/**
+	 *  The AES cipher. We request no padding because RAOP/AirTunes only encrypts full
+	 * block anyway and leaves the trailing byte unencrypted
+	 */
+	private final Cipher m_aesCipher = AirTunesCrytography.getCipher("AES/CBC/NoPadding");
+	
+	/**
+	 *  AES key */
 	private final SecretKey m_aesKey;
+	
+	/**
+	 * AES initialization vector
+	 */
 	private final IvParameterSpec m_aesIv;
 
 	public RaopRtpAudioDecryptionHandler(final SecretKey aesKey, final IvParameterSpec aesIv) {
@@ -43,14 +57,15 @@ public class RaopRtpAudioDecryptionHandler extends OneToOneDecoder {
 			final RaopRtpPacket.Audio audioPacket = (RaopRtpPacket.Audio)msg;
 			final ChannelBuffer audioPayload = audioPacket.getPayload();
 
-			synchronized(this) {
-				m_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
-				for(int i=0; (i + 16) <= audioPayload.capacity(); i += 16) {
-					byte[] block = new byte[16];
-					audioPayload.getBytes(i, block);
-					block = m_aesCipher.update(block);
-					audioPayload.setBytes(i, block);
-				}
+			/* Cipher is restarted for every packet. We simply overwrite the
+			 * encrypted data with the corresponding plain text
+			 */
+			m_aesCipher.init(Cipher.DECRYPT_MODE, m_aesKey, m_aesIv);
+			for(int i=0; (i + 16) <= audioPayload.capacity(); i += 16) {
+				byte[] block = new byte[16];
+				audioPayload.getBytes(i, block);
+				block = m_aesCipher.update(block);
+				audioPayload.setBytes(i, block);
 			}
 		}
 

@@ -22,6 +22,9 @@ import java.util.logging.Logger;
 
 import org.jboss.netty.channel.*;
 
+/**
+ * Logs exceptions thrown by other channel handlers
+ */
 public class ExceptionLoggingHandler extends SimpleChannelHandler {
 	private static Logger s_logger = Logger.getLogger(ExceptionLoggingHandler.class.getName());
 

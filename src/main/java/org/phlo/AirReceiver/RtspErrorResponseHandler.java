@@ -21,6 +21,10 @@ import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.http.*;
 import org.jboss.netty.handler.codec.rtsp.*;
 
+/**
+ * Sends an RTSP error response if one of the channel handlers
+ * throws an exception.
+ */
 public class RtspErrorResponseHandler extends SimpleChannelHandler {
 	/**
 	 * Prevents an infinite loop that otherwise occurs if
