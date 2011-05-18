@@ -145,8 +145,8 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 			throw new ProtocolException("Frame declared to contain " + m_samplesPerFrame + ", but contained " + pcmSamplesLength);
 
 		/* Assemble PCM audio packet from original packet header and decoded data.
-		 * The ALAC decode emits little endian PCM samples, so we must convert them to big endian
-		 * PCM before stuffing them into the packet
+		 * The ALAC decode emits signed PCM samples as integers. We store them as
+		 * as unsigned big endian integers in the packet.
 		 */
 		
 		RaopRtpPacket.Audio pcmPacket;
@@ -162,7 +162,7 @@ public class RaopRtpAudioAlacDecodeHandler extends OneToOneDecoder implements Au
 			throw new ProtocolException("Packet type " + alacPacket.getClass() + " is not supported by the ALAC decoder");
 
 		for(int i=0; i < pcmSamples.length; ++i) {
-			/* Convert sample to big endian PCM */
+			/* Convert sample to big endian unsigned integer PCM */
 			final int pcmSampleUnsigned = pcmSamples[i] + 0x8000;
 
 			pcmPacket.getPayload().setByte(2*i, (pcmSampleUnsigned & 0xff00) >> 8);

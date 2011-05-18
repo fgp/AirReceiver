@@ -455,21 +455,24 @@ public class AudioOutputQueue implements AudioClock {
 	 * @return true if the sample data was added to the queue
 	 */
 	public synchronized boolean enqueue(final long frameTime, final byte[] frames) {
+		/* Playback time of packet */
+		final double packetSeconds = (double)frames.length / (double)(m_bytesPerFrame * m_sampleRate);
+		
 		/* Compute playback delay, i.e., the difference between the last sample's
 		 * playback time and the current line time
 		 */
 		final double delay =
-			(convertFrameToLineTime(frameTime) + frames.length / m_bytesPerFrame - getNowLineTime()) /
+			(convertFrameToLineTime(frameTime) + frames.length / m_bytesPerFrame - getNextLineTime()) /
 			m_sampleRate;
 
 		m_latestSeenFrameTime = Math.max(m_latestSeenFrameTime, frameTime);
 
-		if (delay < -QueueLengthMaxSeconds / 2.0) {
+		if (delay < -packetSeconds) {
 			/* The whole packet is scheduled to be played in the past */
-			s_logger.warning("Audio data arrived " + (-delay) + " seconds too late, dropping");
+			s_logger.warning("Audio data arrived " + -(delay) + " seconds too late, dropping");
 			return false;
 		}
-		else if (delay > QueueLengthMaxSeconds / 2.0) {
+		else if (delay > QueueLengthMaxSeconds) {
 			/* The packet extends further into the future that our maximum queue size.
 			 * We reject it, since this is probably the result of some timing discrepancies
 			 */
