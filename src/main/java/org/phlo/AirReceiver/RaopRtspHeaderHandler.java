@@ -23,8 +23,14 @@ import org.jboss.netty.handler.codec.http.*;
 public class RaopRtspHeaderHandler extends SimpleChannelHandler
 {
 	private static final String HeaderCSeq = "CSeq";
+	
 	private static final String HeaderAudioJackStatus = "Audio-Jack-Status";
 	private static final String HeaderAudioJackStatusDefault = "connected; type=analog";
+	
+	/*
+	private static final String HeaderAudioLatency = "Audio-Latency";
+	private static final long   HeaderAudioLatencyFrames = 88400;
+	*/
 
 	private String m_cseq;
 	
@@ -57,6 +63,7 @@ public class RaopRtspHeaderHandler extends SimpleChannelHandler
 				resp.setHeader(HeaderCSeq, m_cseq);
 			
 			resp.setHeader(HeaderAudioJackStatus, HeaderAudioJackStatusDefault);
+			//resp.setHeader(HeaderAudioLatency, Long.toString(HeaderAudioLatencyFrames));
 		}
 		
 		super.writeRequested(ctx, evt);

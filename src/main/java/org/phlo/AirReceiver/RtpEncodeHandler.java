@@ -25,6 +25,9 @@ public class RtpEncodeHandler extends OneToOneEncoder {
 	protected Object encode(ChannelHandlerContext ctx, Channel channel, Object msg)
 		throws Exception
 	{
-		return ((RtpPacket)msg).getBuffer();
+		if (msg instanceof RtpPacket)
+			return ((RtpPacket)msg).getBuffer();
+		else
+			return msg;
 	}
 }

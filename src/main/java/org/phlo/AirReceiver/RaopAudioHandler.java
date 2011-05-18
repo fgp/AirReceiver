@@ -316,9 +316,9 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 		m_audioStreamInformationProvider = handler;
 		m_audioDecodeHandler = handler;
 
-		m_resendRequestHandler = new RaopRtpRetransmitRequestHandler(m_audioStreamInformationProvider);
-
 		m_audioOutputQueue = new AudioOutputQueue(m_audioStreamInformationProvider);
+
+		m_resendRequestHandler = new RaopRtpRetransmitRequestHandler(m_audioStreamInformationProvider, m_audioOutputQueue);
 
 		m_timingHandler = new RaopRtpTimingHandler(m_audioOutputQueue);
 
@@ -491,13 +491,14 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	private Channel createRtpChannel(final SocketAddress local, final SocketAddress remote, final RaopRtpChannelType channelType)
 	{
 		ConnectionlessBootstrap bootstrap = new ConnectionlessBootstrap(new NioDatagramChannelFactory(m_rtpExecutorService));
-		bootstrap.setOption("receiveBufferSizePredictorFactory", new FixedReceiveBufferSizePredictorFactory(65535));
-		bootstrap.setOption("receiveBufferSize", 65535);
+		bootstrap.setOption("receiveBufferSizePredictorFactory", new FixedReceiveBufferSizePredictorFactory(1500));
+		bootstrap.setOption("receiveBufferSize", 1048576);
 		bootstrap.setPipelineFactory(new ChannelPipelineFactory() {
 			@Override
 			public ChannelPipeline getPipeline() throws Exception {
 				ChannelPipeline pipeline = Channels.pipeline();
 				
+				pipeline.addLast("executionHandler", AirReceiver.RtpExecutionHandler);
 				pipeline.addLast("exceptionLogger", m_exceptionLoggingHandler);
 				pipeline.addLast("decoder", m_decodeHandler);
 				pipeline.addLast("encoder", m_encodeHandler);

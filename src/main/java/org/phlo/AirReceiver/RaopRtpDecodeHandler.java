@@ -17,18 +17,32 @@
 
 package org.phlo.AirReceiver;
 
+import java.util.logging.Logger;
+
 import org.jboss.netty.buffer.*;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.handler.codec.oneone.OneToOneDecoder;
 
 public class RaopRtpDecodeHandler extends OneToOneDecoder {
+	private static final Logger s_logger = Logger.getLogger(RaopRtpDecodeHandler.class.getName());
+
 	@Override
 	protected Object decode(ChannelHandlerContext ctx, Channel channel, Object msg)
 		throws Exception
 	{
-		if (msg instanceof ChannelBuffer)
-			return RaopRtpPacket.decode((ChannelBuffer)msg);
-		else
+		if (msg instanceof ChannelBuffer) {
+			final ChannelBuffer buffer = (ChannelBuffer)msg;
+			
+			try {
+				return RaopRtpPacket.decode(buffer);
+			}
+			catch (InvalidPacketException e1) {
+				s_logger.warning(e1.getMessage());
+				return buffer;
+			}
+		}
+		else {
 			return msg;
+		}
 	}
 }

@@ -31,11 +31,13 @@ public class RtpLoggingHandler extends SimpleChannelHandler {
 	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
 		throws Exception
 	{
-		RtpPacket packet = (RtpPacket)evt.getMessage();
-		
-		Level level = getPacketLevel(packet);
-		if (s_logger.isLoggable(level))
-			s_logger.log(level, evt.getRemoteAddress() + "> " + packet.toString());
+		if (evt.getMessage() instanceof RtpPacket) {
+			RtpPacket packet = (RtpPacket)evt.getMessage();
+			
+			Level level = getPacketLevel(packet);
+			if (s_logger.isLoggable(level))
+				s_logger.log(level, evt.getRemoteAddress() + "> " + packet.toString());
+		}
 		
 		super.messageReceived(ctx, evt);
 	}
@@ -44,11 +46,13 @@ public class RtpLoggingHandler extends SimpleChannelHandler {
 	public void writeRequested(ChannelHandlerContext ctx, MessageEvent evt)
 		throws Exception
 	{
-		RtpPacket packet = (RtpPacket)evt.getMessage();
-		
-		Level level = getPacketLevel(packet);
-		if (s_logger.isLoggable(level))
-			s_logger.log(level, evt.getRemoteAddress() + "< " + packet.toString());
+		if (evt.getMessage() instanceof RtpPacket) {
+			RtpPacket packet = (RtpPacket)evt.getMessage();
+			
+			Level level = getPacketLevel(packet);
+			if (s_logger.isLoggable(level))
+				s_logger.log(level, evt.getRemoteAddress() + "< " + packet.toString());
+		}
 		
 		super.writeRequested(ctx, evt);
 	}
@@ -57,6 +61,8 @@ public class RtpLoggingHandler extends SimpleChannelHandler {
 		if (packet instanceof RaopRtpPacket.Audio)
 			return Level.FINEST;
 		else if (packet instanceof RaopRtpPacket.RetransmitRequest)
+			return Level.FINEST;
+		else if (packet instanceof RaopRtpPacket.Timing)
 			return Level.FINEST;
 		else
 			return Level.FINE;

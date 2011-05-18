@@ -30,10 +30,15 @@ public class RtpPacket {
 		m_buffer.writeZero(size);
 		setVersion((byte)2);
 	}
-	
-	public RtpPacket(final ChannelBuffer buffer) {
-		assert buffer.capacity() >= Length;
+
+	public RtpPacket(final ChannelBuffer buffer) throws ProtocolException {
 		m_buffer = buffer;
+	}
+
+	public RtpPacket(final ChannelBuffer buffer, final int minimumSize) throws ProtocolException {
+		this(buffer);
+		if (buffer.capacity() < minimumSize)
+			throw new InvalidPacketException("Packet had invalid size " + buffer.capacity() + " instead of at least " + minimumSize);
 	}
 	
 	public ChannelBuffer getBuffer() {

@@ -95,8 +95,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setSequence(7);
 		}
 		
-		protected Timing(ChannelBuffer buffer) {
-			super(buffer);
+		protected Timing(ChannelBuffer buffer, int minimumSize) throws ProtocolException {
+			super(buffer, minimumSize);
 		}
 		
 		public NtpTime getReferenceTime() {
@@ -137,8 +137,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setPayloadType(PayloadType);
 		}
 		
-		protected TimingRequest(ChannelBuffer buffer) {
-			super(buffer);
+		protected TimingRequest(ChannelBuffer buffer) throws ProtocolException {
+			super(buffer, Length);
 		}
 	}
 
@@ -155,8 +155,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setPayloadType(PayloadType);
 		}
 		
-		protected TimingResponse(ChannelBuffer buffer) {
-			super(buffer);
+		protected TimingResponse(ChannelBuffer buffer) throws ProtocolException {
+			super(buffer, Length);
 		}
 	}
 
@@ -169,8 +169,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setPayloadType(PayloadType);
 		}
 		
-		protected Sync(ChannelBuffer buffer) {
-			super(buffer);
+		protected Sync(ChannelBuffer buffer) throws ProtocolException {
+			super(buffer, Length);
 		}
 
 		public long getTimeStampMinusLatency() {
@@ -217,11 +217,11 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setSequence(1);
 		}
 		
-		protected RetransmitRequest(ChannelBuffer buffer) {
-			super(buffer);
+		protected RetransmitRequest(ChannelBuffer buffer) throws ProtocolException {
+			super(buffer, Length);
 		}
 		
-		public long getSequenceFirst() {
+		public int getSequenceFirst() {
 			return getBeUInt16(getBuffer(), RaopRtpPacket.Length);
 		}
 
@@ -254,8 +254,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			super(length);
 		}
 		
-		protected Audio(ChannelBuffer buffer) {
-			super(buffer);
+		protected Audio(ChannelBuffer buffer, int minimumSize) throws ProtocolException {
+			super(buffer, minimumSize);
 		}
 
 		abstract public long getTimeStamp();
@@ -276,8 +276,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setPayloadType(PayloadType);
 		}
 		
-		protected AudioTransmit(ChannelBuffer buffer) {
-			super(buffer);
+		protected AudioTransmit(ChannelBuffer buffer) throws ProtocolException {
+			super(buffer, Length);
 		}
 		
 		@Override
@@ -329,8 +329,8 @@ public abstract class RaopRtpPacket extends RtpPacket {
 			setPayloadType(PayloadType);
 		}
 		
-		protected AudioRetransmit(ChannelBuffer buffer) {
-			super(buffer);
+		protected AudioRetransmit(ChannelBuffer buffer) throws ProtocolException {
+			super(buffer, Length);
 		}
 				
 		/**
@@ -403,7 +403,7 @@ public abstract class RaopRtpPacket extends RtpPacket {
 	public static RaopRtpPacket decode(ChannelBuffer buffer)
 		throws ProtocolException
 	{
-		RtpPacket rtpPacket = new RtpPacket(buffer);
+		RtpPacket rtpPacket = new RtpPacket(buffer, Length);
 		
 		switch (rtpPacket.getPayloadType()) {
 			case TimingRequest.PayloadType: return new TimingRequest(buffer);
@@ -421,7 +421,11 @@ public abstract class RaopRtpPacket extends RtpPacket {
 		setVersion((byte)2);
 	}
 	
-	protected RaopRtpPacket(ChannelBuffer buffer) {
+	protected RaopRtpPacket(ChannelBuffer buffer, int minimumSize) throws ProtocolException {
+		super(buffer, minimumSize);
+	}
+	
+	protected RaopRtpPacket(ChannelBuffer buffer) throws ProtocolException {
 		super(buffer);
 	}
 }

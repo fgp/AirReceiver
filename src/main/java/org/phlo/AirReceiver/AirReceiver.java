@@ -37,9 +37,21 @@ import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.*;
 import org.jboss.netty.channel.group.*;
 import org.jboss.netty.channel.socket.nio.*;
+import org.jboss.netty.handler.execution.*;
 
 public class AirReceiver {
-	private static final Logger s_logger = Logger.getLogger(RtspUnsupportedResponseHandler.class.getName());
+	static {
+		final InputStream loggingPropertiesStream =
+			AirReceiver.class.getClassLoader().getResourceAsStream("logging.properties");
+    	try {
+			LogManager.getLogManager().readConfiguration(loggingPropertiesStream);
+		}
+    	catch (IOException e) {
+    		throw new RuntimeException(e.getMessage(), e);
+		}
+	}
+
+	private static final Logger s_logger = Logger.getLogger(AirReceiver.class.getName());
 
 	public static final byte[] HardwareAddressBytes = getHardwareAddress();
 
@@ -67,6 +79,10 @@ public class AirReceiver {
 	);
 	
 	public static final ExecutorService ExecutorService = Executors.newCachedThreadPool();
+	
+	public static final ExecutionHandler RtpExecutionHandler = new ExecutionHandler(
+		new OrderedMemoryAwareThreadPoolExecutor(4, 0, 0)
+	);
 	
 	public static final ChannelHandler CloseOnShutdownHandler = new SimpleChannelUpstreamHandler() {
 	    @Override
@@ -205,10 +221,6 @@ public class AirReceiver {
 				onShutdown();
 			}
     	}));
-    	
-		final InputStream loggingPropertiesStream =
-			AirReceiver.class.getClassLoader().getResourceAsStream("logging.properties");
-    	LogManager.getLogManager().readConfiguration(loggingPropertiesStream);
     	
     	/* Register BouncyCaster security provider */
     	java.security.Security.addProvider(new org.bouncycastle.jce.provider.BouncyCastleProvider());
