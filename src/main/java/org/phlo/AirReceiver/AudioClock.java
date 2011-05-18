@@ -21,5 +21,10 @@ public interface AudioClock {
 	double getNowSecondsTime();
 	long getNowFrameTime();
 	
+	double getNextSecondsTime();
+	long getNextFrameTime();
+	
+	double convertFrameToSecondsTime(long frameTime);
+	
 	void setFrameTime(long frameTime, double secondsTime);
 }

@@ -141,16 +141,24 @@ public class AudioOutputQueue implements AudioClock {
 						 */
 						final long entryFrameTime = m_queue.firstKey();
 						final long entryLineTime = convertFrameToLineTime(entryFrameTime);
-						final long gapFrames = entryLineTime - getEndLineTime();
-						if (gapFrames < m_packetSizeFrames) {
+						final long gapFrames = entryLineTime - getNextLineTime();
+						if (gapFrames < -m_packetSizeFrames) {
+							/* Too late for playback */
+							s_logger.warning("Audio data was scheduled for playback " + (-gapFrames) + " frames ago, skipping");
+
+							m_queue.remove(entryFrameTime);
+							continue;
+						}
+						else if (gapFrames < m_packetSizeFrames) {
 							/* Negligible gap between packet and line end. Prepare packet for playback */
 							didWarnGap = false;
 							
 							/* Unmute line in case it was muted previously */
 							if (lineMuted) {
+								s_logger.info("Audio data available, un-muting line");
+
 								lineMuted = false;
 								applyGain();
-								s_logger.info("Audio data available, un-muted line");
 							}
 							else if (getLineGain() != m_requestedGain) {
 								applyGain();
@@ -161,6 +169,7 @@ public class AudioOutputQueue implements AudioClock {
 							int nextPlaybackSamplesLength = nextPlaybackSamples.length;
 							if (nextPlaybackSamplesLength % m_bytesPerFrame != 0) {
 								s_logger.severe("Audio data contains non-integral number of frames, ignore last " + (nextPlaybackSamplesLength % m_bytesPerFrame) + " bytes");
+
 								nextPlaybackSamplesLength -= nextPlaybackSamplesLength % m_bytesPerFrame;
 							}
 							
@@ -174,7 +183,7 @@ public class AudioOutputQueue implements AudioClock {
 							
 							if (!didWarnGap) {
 								didWarnGap = true;
-								s_logger.warning("Audio data missing for frame time " + getEndLineTime() + " (currently " + gapFrames + " frames), writing " + m_packetSizeFrames + " frames of silence");							
+								s_logger.warning("Audio data missing for frame time " + getNextLineTime() + " (currently " + gapFrames + " frames), writing " + m_packetSizeFrames + " frames of silence");							
 							}
 						}
 					}
@@ -184,7 +193,7 @@ public class AudioOutputQueue implements AudioClock {
 						if (!lineMuted) {
 							lineMuted = true;
 							setLineGain(Float.NEGATIVE_INFINITY);
-							s_logger.fine("Audio data ended at frame time " + getEndLineTime() + ", writing " + m_packetSizeFrames + " frames of silence and muted line");
+							s_logger.fine("Audio data ended at frame time " + getNextLineTime() + ", writing " + m_packetSizeFrames + " frames of silence and muted line");
 						}
 					}
 					
@@ -224,7 +233,7 @@ public class AudioOutputQueue implements AudioClock {
 			
 			while (true) {
 				/* Fetch line end time only once per iteration */
-				long endLineTime = getEndLineTime();
+				long endLineTime = getNextLineTime();
 				
 				final long timingErrorFrames = lineTime - endLineTime;
 				final double timingErrorSeconds = (double)timingErrorFrames / m_sampleRate;
@@ -303,7 +312,7 @@ public class AudioOutputQueue implements AudioClock {
 				for(int b=0; b < m_bytesPerFrame; ++b)
 					m_lineLastFrame[b] = samples[off + len - (m_bytesPerFrame - b)];
 				
-				s_logger.finest("Audio output line end is now at " + getEndLineTime() + " after writing " + len / m_bytesPerFrame + " frames");
+				s_logger.finest("Audio output line end is now at " + getNextLineTime() + " after writing " + len / m_bytesPerFrame + " frames");
 			}
 		}
 	}
@@ -488,13 +497,28 @@ public class AudioOutputQueue implements AudioClock {
 	public double getNowSecondsTime() {
 		return m_secondsTimeOffset + (double)getNowLineTime() / m_sampleRate;
 	}
-
+	
 	@Override
 	public long getNowFrameTime() {
 		return m_frameTimeOffset + getNowLineTime();
 	}
 
-	private synchronized long getEndLineTime() {
+	@Override
+	public double getNextSecondsTime() {
+		return m_secondsTimeOffset + (double)getNextLineTime() / m_sampleRate;
+	}
+	
+	@Override
+	public long getNextFrameTime() {
+		return m_frameTimeOffset + getNextLineTime();
+	}
+
+	@Override
+	public double convertFrameToSecondsTime(long frameTime) {
+		return m_secondsTimeOffset + (double)(frameTime - m_frameTimeOffset) / m_sampleRate;
+	}
+
+	private synchronized long getNextLineTime() {
 		return m_lineFramesWritten;
 	}
 	

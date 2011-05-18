@@ -1,6 +1,6 @@
 /*
  * This file is part of AirReceiver.
- * 
+ *
  * AirReceiver is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
@@ -20,6 +20,7 @@ package org.phlo.AirReceiver;
 import java.util.*;
 import java.util.logging.Logger;
 
+import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
@@ -27,86 +28,120 @@ import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandler {
 	private static Logger s_logger = Logger.getLogger(RaopRtpRetransmitRequestHandler.class.getName());
 
-	private static final double RetransmitRequestsAgeLimitSeconds = 0.8;
-	private static final double RetransmitRequestsOpenLimit = 32;
-	private static final double DuplicateDetectThresholdSeconds = 5;
-	private static final double RetransmitTimeoutSeconds = 0.2;
-	private static final int RetransmitAttempts = 3;
-	
-	private static class MissingPacket {
-		public int sequence;
-		public int retransmitRequestCount = 0;
-		public long retransmitRequestedNanoTime = Long.MIN_VALUE;
-	}
-	
-	private final int m_retransmitRequestsAgeLimitPackets;
-	private final int m_duplicateDetectThresholdPackets;
-	private int m_lastSequence = -1;
-	private static final List<MissingPacket> m_missingPackets = new java.util.LinkedList<MissingPacket>();
-	private int m_retransmitRequestSequence = 0;
-	
-	public RaopRtpRetransmitRequestHandler(AudioStreamInformationProvider streamInfoProvider) {
-		final double packetsPerSecond = streamInfoProvider.getPacketsPerSecond();
-		m_retransmitRequestsAgeLimitPackets = (int)Math.ceil(RetransmitRequestsAgeLimitSeconds * packetsPerSecond);
-		m_duplicateDetectThresholdPackets = (int)Math.ceil(DuplicateDetectThresholdSeconds * packetsPerSecond);
-		
-		s_logger.info("Expecting " + packetsPerSecond + " packets per second, maximum number of in-flight retransmits is " + RetransmitRequestsOpenLimit + ", maximum age of packet for retransmit request is " + m_retransmitRequestsAgeLimitPackets + " packets, size of duplicate detection window is " + m_duplicateDetectThresholdPackets + " packets");
-	}
-	
-	private void markRetransmitted(int sequence) {
-		Iterator<MissingPacket> i = m_missingPackets.iterator();
-		while (i.hasNext()) {
-			MissingPacket missingPacket = i.next();
-			if (missingPacket.sequence == sequence)
-				i.remove();
-		}
-	}
-	
-	private void markMissing(int sequence) {
-		MissingPacket missingPacket = new MissingPacket();
-		missingPacket.sequence = sequence;
-		m_missingPackets.add(missingPacket);
-		
-		while (m_missingPackets.size() > RetransmitRequestsOpenLimit) {
-			MissingPacket m = m_missingPackets.get(0);
-			s_logger.warning("Packet " + m.sequence + " wasn't retransmitted in time");
-			m_missingPackets.remove(0);
-		}
-	}
-	
-	private void requestRetransmits(ChannelHandlerContext ctx) {
-		final long nowNanoTime = System.nanoTime();
-		
-		RaopRtpPacket.RetransmitRequest retransmitRequest = null;
-		
-		Iterator<MissingPacket> missingPacketIterator = m_missingPackets.iterator();
-		while (missingPacketIterator.hasNext()) {
-			MissingPacket missingPacket = missingPacketIterator.next();
-			
-			int missingPacketAge = (0x1000 + m_lastSequence - missingPacket.sequence) % 0x1000;
+	private static final double RetransmitInFlightLimit = 128;
+	private static final int RetransmitAttempts = 2;
 
-			if (missingPacketAge > m_retransmitRequestsAgeLimitPackets)
+	private class MissingPacket {
+		public final int sequence;
+		public final long requiredUntilFrameTime;
+		public final double requiredUntilSecondsTime;
+		public int retransmitRequestCount = 0;
+		public double expectedUntilSecondsTime;
+
+		public MissingPacket(final int _sequence, final double nextSecondsTimee) {
+			sequence = _sequence;
+			requiredUntilFrameTime = convertSequenceToFrameTime(_sequence);
+			requiredUntilSecondsTime = m_audioClock.convertFrameToSecondsTime(requiredUntilFrameTime);
+			computeExpectedUntil(nextSecondsTimee);
+		}
+
+		public void sentRetransmitRequest(final double nextSecondsTimee) {
+			++retransmitRequestCount;
+			computeExpectedUntil(nextSecondsTimee);
+		}
+
+		private void computeExpectedUntil(final double nextSecondsTimee) {
+			expectedUntilSecondsTime = 0.5 * nextSecondsTimee + 0.5 * m_audioClock.convertFrameToSecondsTime(requiredUntilFrameTime);
+		}
+	}
+
+	private final AudioClock m_audioClock;
+	private final long m_framesPerPacket;
+
+	private int m_latestReceivedSequence = -1;
+	private long m_latestReceivedSequenceFrameTime;
+	private static final List<MissingPacket> m_missingPackets = new java.util.LinkedList<MissingPacket>();
+
+	private int m_retransmitRequestSequence = 0;
+
+	public RaopRtpRetransmitRequestHandler(final AudioStreamInformationProvider streamInfoProvider, final AudioClock audioClock) {
+		m_framesPerPacket = streamInfoProvider.getFramesPerPacket();
+		m_audioClock = audioClock;
+	}
+
+	private void markRetransmitted(final int sequence, final double nextSecondsTimee) {
+		final Iterator<MissingPacket> i = m_missingPackets.iterator();
+		while (i.hasNext()) {
+			final MissingPacket missingPacket = i.next();
+			if (missingPacket.sequence == sequence) {
+				s_logger.fine("Packet " + sequence + " arrived " + (missingPacket.expectedUntilSecondsTime - nextSecondsTimee) + " seconds before it was due");
+				i.remove();
+			}
+		}
+	}
+
+	private void markMissing(final int sequence, final double nextSecondsTime) {
+		final MissingPacket missingPacket = new MissingPacket(sequence, nextSecondsTime);
+		if (missingPacket.requiredUntilSecondsTime > nextSecondsTime) {
+			s_logger.fine("Packet " + sequence + " expected to arive in " + (missingPacket.expectedUntilSecondsTime - nextSecondsTime) + " seconds");
+
+			m_missingPackets.add(missingPacket);
+		}
+		else {
+			s_logger.warning("Packet " + sequence + " was required " + (nextSecondsTime - missingPacket.expectedUntilSecondsTime ) + " seconds ago, not requesting retransmit");
+		}
+
+		while (m_missingPackets.size() > RetransmitInFlightLimit) {
+			final MissingPacket m = m_missingPackets.get(0);
+			m_missingPackets.remove(0);
+
+			s_logger.warning("Packet " + sequence + " overflowed in-flight retransmit count, giving up on old packet " + m.sequence);
+		}
+	}
+
+	private synchronized void requestRetransmits(final Channel channel, final double nextSecondsTimee) {
+
+		RaopRtpPacket.RetransmitRequest retransmitRequest = null;
+
+		final Iterator<MissingPacket> missingPacketIterator = m_missingPackets.iterator();
+		while (missingPacketIterator.hasNext()) {
+			final MissingPacket missingPacket = missingPacketIterator.next();
+
+			if (missingPacket.requiredUntilSecondsTime <= nextSecondsTimee) {
+				s_logger.warning("Packet " + missingPacket.sequence + " was required " + (nextSecondsTimee - missingPacket.requiredUntilSecondsTime) + " secons ago, giving up");
+
+				missingPacketIterator.remove();
 				continue;
-			if (missingPacket.retransmitRequestedNanoTime > nowNanoTime - RetransmitTimeoutSeconds*1e9)
+			}
+
+			if (missingPacket.expectedUntilSecondsTime > nextSecondsTimee)
 				continue;
-			if (missingPacket.retransmitRequestCount >= RetransmitAttempts)
+
+			if (missingPacket.retransmitRequestCount >= RetransmitAttempts) {
+				s_logger.warning("Packet " + missingPacket.sequence + " overdue " + (nextSecondsTimee - missingPacket.expectedUntilSecondsTime) + " seconds after " + missingPacket.retransmitRequestCount + " retransmit requests, giving up");
+
+				missingPacketIterator.remove();
 				continue;
-			
-			missingPacket.retransmitRequestedNanoTime = nowNanoTime;
-			++missingPacket.retransmitRequestCount;
-			s_logger.fine("Packet " + missingPacket.sequence + " still missing after " + missingPacket.retransmitRequestCount + " retransmit requests, sending another one");
+			}
+			else {
+				final int retransmitRequestCountPrevious = missingPacket.retransmitRequestCount;
+				final double expectedUntilSecondsTimePrevious = missingPacket.expectedUntilSecondsTime;
+				missingPacket.sentRetransmitRequest(nextSecondsTimee);
+
+				s_logger.fine("Packet " + missingPacket.sequence + " overdue " + (nextSecondsTimee - expectedUntilSecondsTimePrevious) + " seconds after " + retransmitRequestCountPrevious + " retransmit requests, requesting again expecting response in " + (missingPacket.expectedUntilSecondsTime - nextSecondsTimee) + " seconds");
+			}
 
 			if (
 				(retransmitRequest != null) &&
-				(((retransmitRequest.getSequence() + retransmitRequest.getSequenceCount()) % 0x10000) != missingPacket.sequence)
+				(sequenceAdd(retransmitRequest.getSequenceFirst(), retransmitRequest.getSequenceCount()) != missingPacket.sequence)
 			) {
-				if (ctx.getChannel().isOpen())
-					ctx.getChannel().write(retransmitRequest);
+				if (channel.isOpen() && channel.isWritable())
+					channel.write(retransmitRequest);
 				retransmitRequest = null;
 			}
-			
+
 			if (retransmitRequest == null) {
-				m_retransmitRequestSequence = (m_retransmitRequestSequence + 1) % 0x10000;
+				m_retransmitRequestSequence = sequenceSuccessor(m_retransmitRequestSequence);
 				retransmitRequest = new RaopRtpPacket.RetransmitRequest();
 				retransmitRequest.setSequence(m_retransmitRequestSequence);
 				retransmitRequest.setSequenceFirst(missingPacket.sequence);
@@ -117,54 +152,97 @@ public class RaopRtpRetransmitRequestHandler extends SimpleChannelUpstreamHandle
 			}
 		}
 		if (retransmitRequest != null) {
-			if (ctx.getChannel().isOpen())
-				ctx.getChannel().write(retransmitRequest);
+			if (channel.isOpen() && channel.isWritable())
+				channel.write(retransmitRequest);
 		}
 	}
-			
+
 	@Override
-	public void messageReceived(ChannelHandlerContext ctx, MessageEvent evt)
+	public void messageReceived(final ChannelHandlerContext ctx, final MessageEvent evt)
 		throws Exception
 	{
-		RaopRtpPacket packet = (RaopRtpPacket)evt.getMessage();
-
-		if (packet instanceof RaopRtpPacket.AudioTransmit)
-			audioTransmitReceived(ctx, (RaopRtpPacket.AudioTransmit)packet);
-		else if (packet instanceof RaopRtpPacket.AudioRetransmit)
-			audioRetransmitReceived(ctx, (RaopRtpPacket.AudioRetransmit)packet);
+		if (evt.getMessage() instanceof RaopRtpPacket.AudioTransmit)
+			audioTransmitReceived(ctx, (RaopRtpPacket.AudioTransmit)evt.getMessage());
+		else if (evt.getMessage() instanceof RaopRtpPacket.AudioRetransmit)
+			audioRetransmitReceived(ctx, (RaopRtpPacket.AudioRetransmit)evt.getMessage());
 
 		super.messageReceived(ctx, evt);
 	}
 
-	private synchronized void audioRetransmitReceived(ChannelHandlerContext ctx, RaopRtpPacket.AudioRetransmit audioPacket) {
-		markRetransmitted(audioPacket.getOriginalSequence());
-	}
-	
-	private synchronized void audioTransmitReceived(ChannelHandlerContext ctx, RaopRtpPacket.AudioTransmit audioPacket) {
-		markRetransmitted(audioPacket.getSequence());
+	private synchronized void audioRetransmitReceived(final ChannelHandlerContext ctx, final RaopRtpPacket.AudioRetransmit audioPacket) {
+		final double nextSecondsTimee = m_audioClock.getNextSecondsTime();
 
-		if (m_lastSequence < 0)
-			m_lastSequence = (0x10000 + audioPacket.getSequence() - 1) % 0x10000;;
-		
-		int increase = (0x10000 + audioPacket.getSequence() - m_lastSequence) % 0x10000;
-		int decrease = (0x10000 + m_lastSequence - audioPacket.getSequence()) % 0x10000;
-		if (increase == 1) {
-			m_lastSequence = audioPacket.getSequence();
+		markRetransmitted(audioPacket.getOriginalSequence(), nextSecondsTimee);
+		requestRetransmits(ctx.getChannel(), nextSecondsTimee);
+	}
+
+	private synchronized void audioTransmitReceived(final ChannelHandlerContext ctx, final RaopRtpPacket.AudioTransmit audioPacket) {
+		final double nextSecondsTimee = m_audioClock.getNextSecondsTime();
+
+		markRetransmitted(audioPacket.getSequence(), nextSecondsTimee);
+
+		final long delta;
+		if (m_latestReceivedSequence < 0)
+			delta = 1;
+		else
+			delta = sequenceDelta(m_latestReceivedSequence, audioPacket.getSequence());
+
+		final int expectedSequence = sequenceSuccessor(m_latestReceivedSequence);
+		if (delta > 0) {
+			m_latestReceivedSequence = audioPacket.getSequence();
+			m_latestReceivedSequenceFrameTime = audioPacket.getTimeStamp();
 		}
-		else if ((increase > 1) && (increase <= RetransmitRequestsOpenLimit)) {
-			s_logger.fine("Packet sequence number increased by " + increase + ", assuming " + (increase-1) + " packet(s) got lost,");
-			for(int s = (m_lastSequence + 1) % 0x10000; s != audioPacket.getSequence(); s = (s + 1) % 0x10000)
-				markMissing(s);
-			m_lastSequence = audioPacket.getSequence();;
+
+		if (delta == 1) {
+			/* No reordered or missing packets */
 		}
-		else if (decrease <= m_duplicateDetectThresholdPackets) {
-			s_logger.fine("Packet sequence number decreased by " + decrease + ", assuming duplicate or late packet");
+		else if ((delta > 1) && (delta <= RetransmitInFlightLimit)) {
+			s_logger.fine("Packet sequence number increased by " + delta + ", " + (delta-1) + " packet(s) missing,");
+
+			for(int s = expectedSequence; s != audioPacket.getSequence(); s = sequenceSuccessor(s))
+				markMissing(s, nextSecondsTimee);
+		}
+		else if (delta < 0) {
+			s_logger.fine("Packet sequence number decreased by " + (-delta) + ", assuming delayed packet");
 		}
 		else {
-			s_logger.fine("Packet sequence number jumped to " + audioPacket.getSequence() + ", assuming sequences got out of sync, adjusting expected sequence");
-			m_lastSequence = audioPacket.getSequence();;
+			s_logger.warning("Packet sequence number jumped to " + audioPacket.getSequence() + ", assuming sequences number are out of sync");
+
+			m_missingPackets.clear();
 		}
 
-		requestRetransmits(ctx);
+		requestRetransmits(ctx.getChannel(), nextSecondsTimee);
+	}
+
+	private long convertSequenceToFrameTime(final int sequence) {
+		return m_latestReceivedSequenceFrameTime + sequenceDelta(m_latestReceivedSequence, sequence) * m_framesPerPacket;
+	}
+
+	private static long sequenceDistance(final int from, final int to) {
+		assert (from & 0xffff) == from;
+		assert (to & 0xffff) == to;
+
+		return (0x10000 + to - from) % 0x10000;
+	}
+
+	private static long sequenceDelta(final int a, final int b) {
+		final long d = sequenceDistance(a, b);
+		if (d < 0x8000)
+			return d;
+		else
+			return (d - 0x10000);
+	}
+
+	private static int sequenceAdd(final int seq, final long delta) {
+		return (seq + (int)(delta % 0x10000L)) % 0x10000;
+	}
+
+	private static int sequenceSuccessor(final int seq) {
+		return (seq + 1) % 0x10000;
+	}
+
+	@SuppressWarnings("unused")
+	private static int sequencePredecessor(final int seq) {
+		return (0x10000 + seq - 1) % 0x10000;
 	}
 }
