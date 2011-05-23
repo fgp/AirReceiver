@@ -753,6 +753,16 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	 * @return socket address with port substitued
 	 */
 	private InetSocketAddress substitutePort(final InetSocketAddress address, final int port) {
-		return new InetSocketAddress(address.getAddress(), port);
+		/*
+		 * The more natural way of doing this would be
+		 *   new InetSocketAddress(address.getAddress(), port),
+		 * but this leads to a JVM crash on Windows when the
+		 * new socket address is used to connect() an NIO socket.
+		 * 
+		 * According to
+		 *   http://stackoverflow.com/questions/1512578/jvm-crash-on-opening-a-return-socketchannel
+		 * converting to address to a string first fixes the problem.
+		 */
+		return new InetSocketAddress(address.getAddress().getHostAddress(), port);
 	}
 }

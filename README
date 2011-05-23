@@ -14,6 +14,29 @@ Features
 AirReceiver is compatible with iTunes and iPhones/iPods. It implements not
 only raw audio streaming but also the timing-related parts of RAOP/Airtunes2.
 
+RAOP/AirTunes requires that the device (the computer running AirReceiver)
+adapts itself to the rate at which iTunes or iOS streams the sound. AirReceiver
+currently does that simply by repeating samples (in case iTunes/iOS sends
+slightly slower than your sound card emits the signal) or dropping samples
+(in case iTunes/iOS sends slightly faster). This can lead to audible clicks
+in audio output every few seconds or every few minutes, depending in how
+large the clock drift between the two devices is.
+
+AirReceiver will hopefully eventually gain the ability to deal with drifting
+clocks more gracefully by dynamically resampling the audio stream, but it
+isn't there yet.
+
+Working Platforms
+-----------------
+In principle, any platform for which Java 1.6 Standard Edition compatible
+VM is available should work. AirReceiver contains no native (non-Java) code.
+
+AirReceiver has been confirmed to work on Mac OS X 10.6 i386 with the 64-bit
+VM and on Windows XP with the 32bit VM.
+
+Reports of experiences with AirReceiver on other platforms are highly
+appreciated!
+
 Usage
 ------
 If you're on Mac OS X, download the AirReceiver-app.zip from the bin/ folder
@@ -63,6 +86,13 @@ References & Acknowledgements
 * ALAC Decoder written David Hammerton and ported to Java by soiaf
   https://github.com/soiaf/Java-Apple-Lossless-decoder
  
+* Java mDNS - ZeroConf (Bonjour(TM) in Apple terms) implementation for Java
+  http://jmdns.sourceforge.net/
+  Provides AirReceiver with the ability to announce it's service on the
+  local network without having to resort to platform-specific code
+  like Apple's Bonjour Java bindings (which aren't available on Linux
+  anyway)
+ 
 * Netty by the JBoss Community
   http://www.jboss.org/netty
   Netty makes writing network server in Java pure joy. Writing the RTSP server
@@ -76,8 +106,18 @@ References & Acknowledgements
   http://iharder.sourceforge.net/current/java/base64/
   iharder's Base64 decode saved me a few hours it'd otherwise probably have spent
   writing and debugging an base64 encoder/decoder myself.
+  
+* Maven
+  http://maven.apache.org/
+  Hassle-free dependency management. And a helluva lot of plugins, usually
+  just a few google searches away.
 
 * OneJar packaging plugin for maven
   http://one-jar.sourceforge.net/
+  Provides the double-clickable .jar files, and all that's required was adding
+  a few lines to AirReceiver's .pom
+  
+* Mac OS X application packaging plugin for maven
+  http://mojo.codehaus.org/osxappbundle-maven-plugin/
   Add a few lines to your .pom and, there, you've built a Mac OS X application
   bundle from your Java application. Cool!
