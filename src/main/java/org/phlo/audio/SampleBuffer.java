@@ -1,22 +1,27 @@
 package org.phlo.audio;
 
 import java.nio.ByteBuffer;
+import java.nio.IntBuffer;
 
 import javax.sound.sampled.SourceDataLine;
 
 public final class SampleBuffer {
 	private final SampleDimensions m_dimensions;
-	private final long m_frameTime;
 	private final float[][] m_samples;
 
-	public SampleBuffer(final SampleDimensions size, final long frameTime) {
+	private double m_timeStamp = 0.0;
+
+	public SampleBuffer(final SampleDimensions size) {
 		m_dimensions = size;
 		m_samples = new float[size.channels][size.samples];
-		m_frameTime = frameTime;
 	}
 	
-	public long getFrameTime() {
-		return m_frameTime;
+	public double getTimeStamp() {
+		return m_timeStamp;
+	}
+	
+	public void setTimeStamp(double timeStamp) {
+		m_timeStamp = timeStamp;
 	}
 	
 	public SampleDimensions getDims() {
@@ -47,6 +52,28 @@ public final class SampleBuffer {
 	public void copyFrom(final ByteBuffer src, final SampleDimensions srcDims, final ByteFormat srcFormat) {
 		copyFrom(SampleOffset.Zero, src, srcDims, new SampleRange(srcDims), srcFormat);
 	}
+	
+	public void copyFrom(final SampleOffset dstOffset, final IntBuffer src, final SampleDimensions srcDims, final SampleRange srcRange, final SampleLayout srcLayout, final Signedness srcSignedness) {
+		srcDims.assertContains(srcRange);
+		m_dimensions.assertContains(new SampleRange(dstOffset, srcRange.size));
+		
+		SampleLayout.Indexer srcIndexer = srcLayout.getIndexer(srcDims);
+		for(int c=0; c < srcRange.size.channels; ++c) {
+			for(int s=0; s < srcRange.size.samples; ++s) {
+				m_samples[dstOffset.channel + c][dstOffset.sample + s] =
+					srcSignedness.shortToNormalizedFloat(
+						(short)src.get(srcIndexer.getSampleIndex(
+							srcRange.offset.channel + c,
+							srcRange.offset.sample + s
+						))
+					);
+			}
+		}
+	}
+	
+	public void copyFrom(final IntBuffer src, final SampleDimensions srcDims, final SampleLayout srcLayout, final Signedness srcSignedness) {
+		copyFrom(SampleOffset.Zero, src, srcDims, new SampleRange(srcDims), srcLayout, srcSignedness);
+	}
 
 	public void copyTo(final SampleRange srcRange, final ByteBuffer dst, final SampleDimensions dstDims, final SampleOffset dstOffset, final ByteFormat dstByteFormat) {
 		m_dimensions.assertContains(srcRange);
@@ -70,20 +97,23 @@ public final class SampleBuffer {
 		copyTo(new SampleRange(m_dimensions), dst, dstDims, SampleOffset.Zero, dstFormat);
 	}
 	
-	public SampleRange writeTo(SampleRange srcRange, final SourceDataLine line, final ByteFormat lineByteFormat) {
+	public int writeTo(SampleRange srcRange, final SourceDataLine line, final ByteFormat lineByteFormat) {
 		m_dimensions.assertContains(srcRange);
+		if (srcRange.size.channels != line.getFormat().getChannels())
+			throw new IllegalArgumentException("Line expects " + line.getFormat().getChannels() + " but source range contains " + srcRange.size.channels);
 		lineByteFormat.layout.assertEquals(SampleLayout.Interleaved);
 		
 		ByteBuffer buffer = lineByteFormat.allocateBuffer(srcRange.size);
 		copyTo(srcRange, buffer, srcRange.size, SampleOffset.Zero, lineByteFormat);
 		
-		int nextByte = line.write(buffer.array(), buffer.arrayOffset(), buffer.capacity());
-		int nextSample = nextByte / (m_dimensions.channels * lineByteFormat.getBytesPerSample());
-		assert nextSample <= m_dimensions.samples;
+		int writtenBytes = line.write(buffer.array(), buffer.arrayOffset(), buffer.capacity());
+		int writtenSamples = writtenBytes / (srcRange.size.channels * lineByteFormat.getBytesPerSample());
+		assert writtenSamples <= m_dimensions.samples;
 		
-		return new SampleRange(
-			new SampleOffset(0, nextSample),
-			new SampleDimensions(m_dimensions.channels, m_dimensions.samples - nextSample)
-		);
+		return writtenSamples;
+	}
+	
+	public int writeTo(final SourceDataLine line, final ByteFormat lineByteFormat) {
+		return writeTo(new SampleRange(m_dimensions), line, lineByteFormat);
 	}
 }

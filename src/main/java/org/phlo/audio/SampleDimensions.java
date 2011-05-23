@@ -14,6 +14,10 @@ public final class SampleDimensions {
 		samples = _samples;
 	}
 	
+	public int getTotalSamples() {
+		return channels * samples;
+	}
+	
 	public boolean contains(SampleRange range) {
 		return
 			(range.offset.channel + range.size.channels <= channels) &&

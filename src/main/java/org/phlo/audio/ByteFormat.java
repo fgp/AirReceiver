@@ -34,11 +34,11 @@ public final class ByteFormat {
 	}
 	
 	public int getSizeBytes(SampleDimensions dimensions) {
-		return layout.getSizeSamples(dimensions) * getBytesPerSample();
+		return dimensions.getTotalSamples() * getBytesPerSample();
 	}
 	
-	public int getSizeSamples(SampleDimensions dimensions) {
-		return layout.getSizeSamples(dimensions);
+	public SampleDimensions getDimensionsFromChannelsAndByteSize(int channels, int byteSize) {
+		return new SampleDimensions(channels, byteSize / (getBytesPerSample() * channels));
 	}
 	
 	public ByteBuffer allocateBuffer(SampleDimensions dimensions) {

@@ -35,10 +35,6 @@ public enum SampleLayout {
 		return getIndexer(size, SampleOffset.Zero);
 	}
 	
-	public final int getSizeSamples(final SampleDimensions size) {
-		return size.channels * size.samples;
-	}
-	
 	public final void assertEquals(SampleLayout layout) {
 		if (!equals(layout))
 			throw new IllegalArgumentException("Layout " + this + " is not supported");

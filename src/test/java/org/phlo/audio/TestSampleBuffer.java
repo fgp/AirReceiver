@@ -26,7 +26,7 @@ public class TestSampleBuffer {
 			/* channel 1 */ { 0.0f,		-1.0f + U,		U * 0.5f,		 1.0f - U },
 		};
 		
-		SampleBuffer sampleBuffer = new SampleBuffer(sampleDimensions, 0);
+		SampleBuffer sampleBuffer = new SampleBuffer(sampleDimensions);
 		sampleBuffer.copyFrom(
 			new SampleOffset(0, 1),
 			bytesWrapped,
@@ -73,7 +73,7 @@ public class TestSampleBuffer {
 			/* channel 2 */ { 0.0f,		 U * 1.5f,		-1.0f + 0,		 -U * 1.5f },
 		};
 		
-		SampleBuffer sampleBuffer = new SampleBuffer(sampleDimensions, 0);
+		SampleBuffer sampleBuffer = new SampleBuffer(sampleDimensions);
 		sampleBuffer.copyFrom(
 			new SampleOffset(0, 1),
 			bytesWrapped,
