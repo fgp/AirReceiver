@@ -16,6 +16,10 @@ public class SampleOffset {
 		sample = _sample;
 	}
 	
+	public SampleOffset add(SampleOffset other) {
+		return new SampleOffset(channel + other.channel, sample + other.sample);
+	}
+	
 	@Override
 	public String toString() {
 		return "[" + channel + ";" + sample + "]";

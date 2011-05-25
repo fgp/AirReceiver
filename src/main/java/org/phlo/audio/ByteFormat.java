@@ -6,11 +6,6 @@ import java.nio.ByteOrder;
 import javax.sound.sampled.*;
 
 public final class ByteFormat {
-	public interface Accessor {
-		float getSample(int channel, int sample);
-		void setSample(int channel, int index, float sample);
-	}
-	
 	public final SampleLayout layout;
 	public final ByteOrder byteOrder;
 	public final SampleFormat sampleFormat;
@@ -29,20 +24,8 @@ public final class ByteFormat {
 		);
 	}
 	
-	public int getBytesPerSample() {
-		return sampleFormat.BytesPerSample;
-	}
-	
-	public int getSizeBytes(SampleDimensions dimensions) {
-		return dimensions.getTotalSamples() * getBytesPerSample();
-	}
-	
-	public SampleDimensions getDimensionsFromChannelsAndByteSize(int channels, int byteSize) {
-		return new SampleDimensions(channels, byteSize / (getBytesPerSample() * channels));
-	}
-	
 	public ByteBuffer allocateBuffer(SampleDimensions dimensions) {
-		ByteBuffer buffer = ByteBuffer.allocate(getSizeBytes(dimensions));
+		ByteBuffer buffer = ByteBuffer.allocate(sampleFormat.getSizeBytes((dimensions)));
 		buffer.order(byteOrder);
 		return buffer;
 	}
@@ -52,29 +35,46 @@ public final class ByteFormat {
 		buffer.order(byteOrder);
 		return buffer;
 	}
+	
+	public SampleIndexedAccessor getAccessor(final ByteBuffer buffer, final SampleDimensions bufferDimensions, final SampleRange range) {
+		final ByteBuffer bufferWithByteOrder = buffer.duplicate();
+		bufferWithByteOrder.order(byteOrder);
+		final SampleIndexer sampleIndexer = layout.getIndexer(bufferDimensions, range);
+		final SampleAccessor sampleAccessor = sampleFormat.getAccessor(bufferWithByteOrder);
 
-	public <R> R accessSamples(ByteBuffer buffer, SampleDimensions dimensions, final Block<R,Accessor> block) {
-		final SampleLayout.Indexer sampleIndexer = layout.getIndexer(dimensions);
-		final SampleFormat.Accessor sampleAccessor = sampleFormat.getAccessor(buffer);
-		
-		ByteOrder orderOriginal = buffer.order();
-		try {
-			buffer.order(byteOrder);
+		return new SampleIndexedAccessor() {
+			@Override
+			public float getSample(int channel, int sample) {
+				return sampleAccessor.getSample(sampleIndexer.getSampleIndex(channel, sample));
+			}
 
-			return block.block(new Accessor() {
-				@Override
-				public float getSample(int channel, int sample) {
-					return sampleAccessor.getSample(sampleIndexer.getSampleIndex(channel, sample));
-				}
+			@Override
+			public void setSample(int channel, int sample, float value) {
+				sampleAccessor.setSample(sampleIndexer.getSampleIndex(channel, sample), value);
+			}
 
-				@Override
-				public void setSample(int channel, int sample, float value) {
-					sampleAccessor.setSample(sampleIndexer.getSampleIndex(channel, sample), value);
-				}
-			});
-		}
-		finally {
-			buffer.order(orderOriginal);
-		}
+			@Override
+			public SampleDimensions getDimensions() {
+				return range.size;
+			}
+
+			@Override
+			public SampleIndexedAccessor slice(SampleOffset offset, SampleDimensions dimensions) {
+				return getAccessor(buffer, bufferDimensions, range.slice(offset, dimensions));
+			}
+
+			@Override
+			public SampleIndexedAccessor slice(SampleRange range) {
+				return getAccessor(buffer, bufferDimensions, range.slice(range));
+			}
+		};
+	}
+	
+	public SampleIndexedAccessor getAccessor(final ByteBuffer buffer, final SampleDimensions bufferDimensions, final SampleOffset offset) {
+		return getAccessor(buffer, bufferDimensions, new SampleRange(offset, bufferDimensions.reduce(offset.channel, offset.sample)));
+	}
+	
+	public SampleIndexedAccessor getAccessor(final ByteBuffer buffer, final SampleDimensions bufferDimensions) {
+		return getAccessor(buffer, bufferDimensions, new SampleRange(SampleOffset.Zero, bufferDimensions));
 	}
 }

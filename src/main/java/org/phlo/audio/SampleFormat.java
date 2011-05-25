@@ -6,8 +6,12 @@ import javax.sound.sampled.AudioFormat;
 
 public enum SampleFormat {
 	UnsignedInteger16(2) {
-		@Override public final Accessor getAccessor(final ByteBuffer buffer) {
-			return new Accessor() {
+		@Override public final Signedness getSignedness() {
+			return Signedness.Unsigned;
+		}
+		
+		@Override public final SampleAccessor getAccessor(final ByteBuffer buffer) {
+			return new SampleAccessor() {
 				@Override public float getSample(final int index) {
 					return Signedness.Unsigned.shortToNormalizedFloat(buffer.getShort(BytesPerSample * index));
 				}
@@ -20,8 +24,12 @@ public enum SampleFormat {
 	},
 
 	SignedInteger16(2) {
-		@Override public final Accessor getAccessor(final ByteBuffer buffer) {
-			return new Accessor() {
+		@Override public final Signedness getSignedness() {
+			return Signedness.Signed;
+		}
+
+		@Override public final SampleAccessor getAccessor(final ByteBuffer buffer) {
+			return new SampleAccessor() {
 				@Override public float getSample(final int index) {
 					return Signedness.Signed.shortToNormalizedFloat(buffer.getShort(BytesPerSample * index));
 				}
@@ -34,8 +42,12 @@ public enum SampleFormat {
 	},
 
 	Float32(4) {
-		@Override public final Accessor getAccessor(final ByteBuffer buffer) {
-			return new Accessor() {
+		@Override public final Signedness getSignedness() {
+			return null;
+		}
+
+		@Override public final SampleAccessor getAccessor(final ByteBuffer buffer) {
+			return new SampleAccessor() {
 				@Override public float getSample(final int index) {
 					return buffer.getFloat(BytesPerSample * index);
 				}
@@ -46,11 +58,6 @@ public enum SampleFormat {
 			};
 		}
 	};
-	
-	public interface Accessor {
-		float getSample(int index);
-		void setSample(int index, float sample);
-	}
 	
 	public static SampleFormat fromAudioFormat(AudioFormat audioFormat) {
 		if (
@@ -75,6 +82,16 @@ public enum SampleFormat {
 	private SampleFormat(final int _bytesPerSample) {
 		BytesPerSample = _bytesPerSample;
 	}
+	
+	public int getSizeBytes(SampleDimensions dimensions) {
+		return dimensions.getTotalSamples() * BytesPerSample;
+	}
+	
+	public SampleDimensions getDimensionsFromChannelsAndByteSize(int channels, int byteSize) {
+		return new SampleDimensions(channels, byteSize / (BytesPerSample * channels));
+	}
+	
+	public abstract Signedness getSignedness();
 
-	public abstract Accessor getAccessor(ByteBuffer buffer);
+	public abstract SampleAccessor getAccessor(ByteBuffer buffer);
 }

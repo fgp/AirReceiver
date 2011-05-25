@@ -3,17 +3,33 @@ package org.phlo.audio;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 
-import javax.sound.sampled.SourceDataLine;
-
-public final class SampleBuffer {
-	private final SampleDimensions m_dimensions;
-	private final float[][] m_samples;
+public final class SampleBuffer implements SampleIndexedAccessor {
+	private final SampleDimensions m_bufferDimensions;
+	private final float[] m_buffer;
+	
+	private final SampleIndexer m_samplesIndexer;
 
 	private double m_timeStamp = 0.0;
+	
+	public SampleBuffer(final float[] buffer, final SampleDimensions bufferDimensions, SampleIndexer samplesIndexer) {
+		m_buffer = buffer;
+		m_bufferDimensions = bufferDimensions;
+		m_samplesIndexer = samplesIndexer;
+	}
+	
+	public SampleBuffer(final float[] buffer, final SampleDimensions bufferDimensions, final SampleRange range, final SampleLayout layout) {
+		m_buffer = buffer;
+		m_bufferDimensions = bufferDimensions;
+		m_samplesIndexer = layout.getIndexer(bufferDimensions, range);
+	}
 
-	public SampleBuffer(final SampleDimensions size) {
-		m_dimensions = size;
-		m_samples = new float[size.channels][size.samples];
+	public SampleBuffer(final SampleDimensions dimensions) {
+		this(
+			new float[dimensions.getTotalSamples()],
+			dimensions,
+			new SampleRange(SampleOffset.Zero, dimensions),
+			SampleLayout.Banded
+		);
 	}
 	
 	public double getTimeStamp() {
@@ -24,96 +40,74 @@ public final class SampleBuffer {
 		m_timeStamp = timeStamp;
 	}
 	
-	public SampleDimensions getDims() {
-		return m_dimensions;
+	public SampleBuffer slice(SampleRange range) {
+		return new SampleBuffer(m_buffer, m_bufferDimensions, m_samplesIndexer.slice(range));
 	}
 
-	public float[][] getSamples() {
-		return m_samples;
+	public SampleBuffer slice(SampleOffset offset, SampleDimensions dimensions) {
+		return new SampleBuffer(m_buffer, m_bufferDimensions, m_samplesIndexer.slice(offset, dimensions));
 	}
 
-	public void copyFrom(final SampleOffset dstOffset, final ByteBuffer src, final SampleDimensions srcDims, final SampleRange srcRange, final ByteFormat srcByteFormat) {
+	public void copyFrom(final ByteBuffer src, final SampleDimensions srcDims, final SampleRange srcRange, final ByteFormat srcByteFormat) {
 		srcDims.assertContains(srcRange);
-		m_dimensions.assertContains(new SampleRange(dstOffset, srcRange.size));
+		m_samplesIndexer.getDimensions().assertContains(srcRange.size);
 		
-		srcByteFormat.accessSamples(src, srcDims, new Block<Void, ByteFormat.Accessor>() {
-			@Override public Void block(ByteFormat.Accessor accessor) {
-				for(int c=0; c < srcRange.size.channels; ++c) {
-					for(int s=0; s < srcRange.size.samples; ++s) {
-						m_samples[dstOffset.channel + c][dstOffset.sample + s] =
-							accessor.getSample(srcRange.offset.channel + c, srcRange.offset.sample + s);
-					}
-				}
-				return null;
+		final SampleIndexedAccessor srcAccessor = srcByteFormat.getAccessor(src, srcDims, srcRange);
+		for(int c=0; c < srcRange.size.channels; ++c) {
+			for(int s=0; s < srcRange.size.samples; ++s) {
+				m_buffer[m_samplesIndexer.getSampleIndex(c, s)] = srcAccessor.getSample(c, s);
 			}
-		});
+		}
 	}
 
 	public void copyFrom(final ByteBuffer src, final SampleDimensions srcDims, final ByteFormat srcFormat) {
-		copyFrom(SampleOffset.Zero, src, srcDims, new SampleRange(srcDims), srcFormat);
+		copyFrom(src, srcDims, new SampleRange(srcDims), srcFormat);
 	}
 	
-	public void copyFrom(final SampleOffset dstOffset, final IntBuffer src, final SampleDimensions srcDims, final SampleRange srcRange, final SampleLayout srcLayout, final Signedness srcSignedness) {
+	public void copyFrom(final IntBuffer src, final SampleDimensions srcDims, final SampleRange srcRange, final SampleLayout srcLayout, final Signedness srcSignedness) {
+		m_samplesIndexer.getDimensions().assertContains(srcRange.size);
 		srcDims.assertContains(srcRange);
-		m_dimensions.assertContains(new SampleRange(dstOffset, srcRange.size));
 		
-		SampleLayout.Indexer srcIndexer = srcLayout.getIndexer(srcDims);
+		final SampleIndexer srcIndexer = srcLayout.getIndexer(srcDims, srcRange);
 		for(int c=0; c < srcRange.size.channels; ++c) {
 			for(int s=0; s < srcRange.size.samples; ++s) {
-				m_samples[dstOffset.channel + c][dstOffset.sample + s] =
-					srcSignedness.shortToNormalizedFloat(
-						(short)src.get(srcIndexer.getSampleIndex(
-							srcRange.offset.channel + c,
-							srcRange.offset.sample + s
-						))
-					);
+				m_buffer[m_samplesIndexer.getSampleIndex(c, s)] =
+					srcSignedness.shortToNormalizedFloat((short)src.get(srcIndexer.getSampleIndex(c, s)));
 			}
 		}
 	}
 	
 	public void copyFrom(final IntBuffer src, final SampleDimensions srcDims, final SampleLayout srcLayout, final Signedness srcSignedness) {
-		copyFrom(SampleOffset.Zero, src, srcDims, new SampleRange(srcDims), srcLayout, srcSignedness);
+		copyFrom(src, srcDims, new SampleRange(srcDims), srcLayout, srcSignedness);
 	}
 
-	public void copyTo(final SampleRange srcRange, final ByteBuffer dst, final SampleDimensions dstDims, final SampleOffset dstOffset, final ByteFormat dstByteFormat) {
-		m_dimensions.assertContains(srcRange);
-		dstDims.assertContains(new SampleRange(dstOffset, srcRange.size));
+	public void copyTo(final ByteBuffer dst, final SampleDimensions dstDims, final SampleOffset dstOffset, final ByteFormat dstByteFormat) {
+		dstDims.assertContains(new SampleRange(dstOffset, m_samplesIndexer.getDimensions()));
 		
-		dstByteFormat.accessSamples(dst, dstDims, new Block<Void, ByteFormat.Accessor>() {
-			@Override public Void block(ByteFormat.Accessor accessor) {
-				for(int c=0; c < srcRange.size.channels; ++c) {
-					for(int s=0; s < srcRange.size.samples; ++s) {
-						accessor.setSample(
-							dstOffset.channel + c, dstOffset.sample + s,
-							m_samples[srcRange.offset.channel + c][srcRange.offset.sample + s]);
-					}
-				}
-				return null;
+		final SampleIndexedAccessor dstAccessor = dstByteFormat.getAccessor(dst, dstDims, dstOffset);
+		for(int c=0; c < m_samplesIndexer.getDimensions().channels; ++c) {
+			for(int s=0; s < m_samplesIndexer.getDimensions().samples; ++s) {
+				dstAccessor.setSample(c, s, m_buffer[m_samplesIndexer.getSampleIndex(c, s)]);
 			}
-		});
+		}
 	}
 
 	public void copyTo(final ByteBuffer dst, final SampleDimensions dstDims, final ByteFormat dstFormat) {
-		copyTo(new SampleRange(m_dimensions), dst, dstDims, SampleOffset.Zero, dstFormat);
+		copyTo(dst, dstDims, SampleOffset.Zero, dstFormat);
 	}
-	
-	public int writeTo(SampleRange srcRange, final SourceDataLine line, final ByteFormat lineByteFormat) {
-		m_dimensions.assertContains(srcRange);
-		if (srcRange.size.channels != line.getFormat().getChannels())
-			throw new IllegalArgumentException("Line expects " + line.getFormat().getChannels() + " but source range contains " + srcRange.size.channels);
-		lineByteFormat.layout.assertEquals(SampleLayout.Interleaved);
-		
-		ByteBuffer buffer = lineByteFormat.allocateBuffer(srcRange.size);
-		copyTo(srcRange, buffer, srcRange.size, SampleOffset.Zero, lineByteFormat);
-		
-		int writtenBytes = line.write(buffer.array(), buffer.arrayOffset(), buffer.capacity());
-		int writtenSamples = writtenBytes / (srcRange.size.channels * lineByteFormat.getBytesPerSample());
-		assert writtenSamples <= m_dimensions.samples;
-		
-		return writtenSamples;
+
+	@Override
+	public SampleDimensions getDimensions() {
+		return m_samplesIndexer.getDimensions();
 	}
-	
-	public int writeTo(final SourceDataLine line, final ByteFormat lineByteFormat) {
-		return writeTo(new SampleRange(m_dimensions), line, lineByteFormat);
+
+	@Override
+	public float getSample(int channel, int sample) {
+		return m_buffer[m_samplesIndexer.getSampleIndex(channel, sample)];
+	}
+
+	@Override
+	public void setSample(int channel, int sample, float value) {
+		m_buffer[m_samplesIndexer.getSampleIndex(channel, sample)] = value;
 	}
 }

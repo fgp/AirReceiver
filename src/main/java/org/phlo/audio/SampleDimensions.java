@@ -14,14 +14,32 @@ public final class SampleDimensions {
 		samples = _samples;
 	}
 	
+	public SampleDimensions reduce(int _channels, int _samples) {
+		assertContains(_channels, _samples);
+		return new SampleDimensions(channels - _channels, samples - _samples);
+	}
+	
+	public SampleDimensions intersect(final SampleDimensions other) {
+		return new SampleDimensions(
+			Math.min(channels, other.channels),
+			Math.min(samples, other.samples)
+		);
+	}
+	
 	public int getTotalSamples() {
 		return channels * samples;
 	}
 	
+	public boolean contains(int _channels, int _samples) {
+		return (_channels <= channels) && (_samples <= samples);
+	}
+	
+	public boolean contains(SampleOffset offset, SampleDimensions dimensions) {
+		return contains(offset.channel + dimensions.channels, offset.sample + dimensions.samples);
+	}
+	
 	public boolean contains(SampleRange range) {
-		return
-			(range.offset.channel + range.size.channels <= channels) &&
-			(range.offset.sample + range.size.samples <= samples);
+		return contains(range.offset, range.size);
 	}
 	
 	public boolean contains(SampleOffset offset) {
@@ -29,7 +47,17 @@ public final class SampleDimensions {
 	}
 	
 	public boolean contains(SampleDimensions dimensions) {
-		return (dimensions.channels < channels) && (dimensions.samples < samples);
+		return contains(dimensions.channels, dimensions.samples);
+	}
+
+	public void assertContains(int _channels, int _samples) {
+		if (!contains(_channels, _samples))
+			throw new IllegalArgumentException("Index (" + _channels + "," + _samples + ") exceeds dimensions " + this);
+	}
+
+	public void assertContains(SampleOffset offset, SampleDimensions dimensions) {
+		if (!contains(offset, dimensions))
+			throw new IllegalArgumentException("Dimensions " + dimensions + " at " + offset + " exceed dimensions " + this);
 	}
 	
 	public void assertContains(SampleRange range) {

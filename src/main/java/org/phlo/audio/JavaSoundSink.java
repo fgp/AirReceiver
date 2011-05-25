@@ -1,5 +1,6 @@
 package org.phlo.audio;
 
+import java.nio.ByteBuffer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -63,7 +64,21 @@ public class JavaSoundSink implements SampleClock {
 
 		public volatile boolean exit = false;
 
-		private double m_lineEndTime;
+		private volatile double m_lineEndTime;
+
+		private final float[] m_lineEndSample = new float[m_channels];
+
+		private final ByteFormat m_bufferFormat = new ByteFormat(m_javaSoundAudioFormat);
+
+		private final SampleDimensions m_bufferDimensions =
+			m_bufferFormat.sampleFormat.getDimensionsFromChannelsAndByteSize(
+				m_channels,
+				m_javaSoundLine.getBufferSize()
+			);
+
+		private final ByteBuffer m_buffer = m_bufferFormat.allocateBuffer(m_bufferDimensions);
+		
+		private final SampleBuffer m_silence = new SampleBuffer(m_bufferDimensions);
 		
 		@Override
 		public void run() {
@@ -96,15 +111,6 @@ public class JavaSoundSink implements SampleClock {
 					});
 				}
 				
-				/* Get the line's byte format and allocate a buffer containing silence */
-				ByteFormat lineByteFormat = new ByteFormat(m_javaSoundAudioFormat);
-				SampleBuffer silenceBuffer = new SampleBuffer(
-					lineByteFormat.getDimensionsFromChannelsAndByteSize(
-						m_channels,
-						m_javaSoundLine.getBufferSize()
-					)
-				);
-				
 				/* Start the line. It probably won't actuall start until we write some data */
 				m_javaSoundLine.start();
 				
@@ -115,7 +121,7 @@ public class JavaSoundSink implements SampleClock {
 				 * signals us that lineStartTime has been set
 				 */
 				{
-					final int silenceWritten = silenceBuffer.writeTo(m_javaSoundLine, lineByteFormat);
+					final int silenceWritten = write(m_silence);
 	
 					/* Wait for the outer class'es constructor to initialize m_lineStartTime
 					 * and use that to initialize the line end time
@@ -190,69 +196,45 @@ public class JavaSoundSink implements SampleClock {
 						silenceSamples = (int)Math.round(Math.min(Math.max(
 							0.0,
 							(sampleSourceBuffer.getTimeStamp() - m_lineEndTime) * m_sampleRate),
-							(double)silenceBuffer.getDims().samples
+							(double)m_silence.getDimensions().samples
 						));
 						skipSamples = (int)Math.round(Math.min(Math.max(
 							0.0,
 							(m_lineEndTime - sampleSourceBuffer.getTimeStamp()) * m_sampleRate),
-							(double)sampleSourceBuffer.getDims().samples
+							(double)sampleSourceBuffer.getDimensions().samples
 						));
 					}
 					else {
 						silenceSamples = (int)Math.ceil(Math.min(
 							(m_startTime - m_lineEndTime) * m_sampleRate,
-							(double)silenceBuffer.getDims().samples
+							(double)m_silence.getDimensions().samples
 						));
 						skipSamples = -1;
 					}
 					
 					
 					/* Write silence samples */
-					if (silenceSamples > 0) {
-						advanceEndTime(
-							silenceBuffer.writeTo(
-								new SampleRange(
-									SampleOffset.Zero,
-									new SampleDimensions(
-										m_channels,
-										silenceSamples
-								)),
-								m_javaSoundLine,
-								lineByteFormat
-							)
-						);
-					}
+					if (silenceSamples > 0)
+						advanceEndTime(write(repeatLastSample(silenceSamples)));
 					
 					/* Write sample source samples */
 					if (sampleSourceBuffer != null) {
-						if (skipSamples >= sampleSourceBuffer.getDims().samples) {
+						if (skipSamples >= sampleSourceBuffer.getDimensions().samples) {
 							s_logger.warning("Audio output overlaps " + skipSamples + " samples, ignored buffer");
 						}
-						else if (silenceSamples >= sampleSourceBuffer.getDims().samples) {
-							s_logger.warning("Audio output has gap of " + skipSamples + " samples, ignored buffer");
+						else if (silenceSamples >= sampleSourceBuffer.getDimensions().samples) {
+							s_logger.warning("Audio output has gap of " + silenceSamples + " samples, ignored buffer");
 						}
 						else {
 							if (skipSamples > 0)
 								s_logger.warning("Audio output overlaps " + skipSamples + " samples, skipped samples");
 							if (silenceSamples > 0)
-								s_logger.warning("Audio output has gap of " + skipSamples + " samples, filled with silence");
+								s_logger.warning("Audio output has gap of " + silenceSamples + " samples, filled with silence");
 							
-							advanceEndTime(
-								sampleSourceBuffer.writeTo(
-									new SampleRange(
-										new SampleOffset(
-											0,
-											skipSamples
-										),
-										new SampleDimensions(
-											Math.min(m_channels, sampleSourceBuffer.getDims().channels),
-											sampleSourceBuffer.getDims().samples - skipSamples
-										)
-									),
-									m_javaSoundLine,
-									lineByteFormat
-								)
-							);
+							advanceEndTime(write(sampleSourceBuffer.slice(
+								new SampleOffset(0, skipSamples),
+								sampleSourceBuffer.getDimensions().reduce(0, skipSamples)
+							)));
 						}
 					}
 				} /* while (!exit)
@@ -262,7 +244,7 @@ public class JavaSoundSink implements SampleClock {
 				/* Write some silence and mute the line to prevent
 				 * it from emitting noise while it's closing
 				 */
-				silenceBuffer.writeTo(m_javaSoundLine, lineByteFormat);
+				advanceEndTime(write(repeatLastSample(m_silence.getDimensions().samples)));
 				mute();
 				
 				m_javaSoundLine.stop();
@@ -272,11 +254,64 @@ public class JavaSoundSink implements SampleClock {
 			}
 		}
 		
-		private synchronized void advanceEndTime(int samples) {
+		private SampleBuffer repeatLastSample(int samples) {
+			SampleBuffer result = m_silence.slice(
+				SampleOffset.Zero,
+				new SampleDimensions(m_silence.getDimensions().channels, samples)
+			);
+			
+			for(int c=0; c < result.getDimensions().channels; ++c)
+				for(int s=0; s < result.getDimensions().samples; ++s)
+					result.setSample(c, s, m_lineEndSample[c]);
+			
+			return result;
+		}
+		
+		private int write(SampleBuffer sampleBuffer) {
+			int totalWrittenSamples = 0;
+			while (sampleBuffer.getDimensions().samples > 0) {
+				final SampleDimensions writeDimensions =
+					sampleBuffer.getDimensions().intersect(m_bufferDimensions);
+
+				sampleBuffer
+					.slice(SampleOffset.Zero, writeDimensions)
+					.copyTo(m_buffer, m_bufferDimensions, m_bufferFormat);
+
+				final int writtenBytes = m_javaSoundLine.write(
+					m_buffer.array(),
+					m_buffer.arrayOffset(),
+					m_bufferFormat.sampleFormat.getSizeBytes(writeDimensions)
+				);
+				final SampleDimensions writtenDimensions =
+					m_bufferFormat.sampleFormat.getDimensionsFromChannelsAndByteSize(
+						m_bufferDimensions.channels,
+						writtenBytes
+					);
+				
+				if (writtenDimensions.samples > 0) {
+					for(int c=0; c < writtenDimensions.channels; ++c)
+						m_lineEndSample[c] = sampleBuffer.getSample(c, writtenDimensions.samples-1);
+				}
+				
+				totalWrittenSamples += writtenDimensions.samples;
+				
+				if (writeDimensions.samples < writtenDimensions.samples)
+					break;
+				
+				sampleBuffer = sampleBuffer.slice(new SampleOffset(
+					0,
+					writtenDimensions.samples
+				), null);
+			}
+			
+			return totalWrittenSamples;
+		}
+		
+		private void advanceEndTime(int samples) {
 			m_lineEndTime += (double)samples / m_sampleRate;
 		}
 		
-		public synchronized double getEndTime() {
+		public double getEndTime() {
 			return m_lineEndTime;
 		}
 	}
