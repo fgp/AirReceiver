@@ -1,3 +1,20 @@
+/*
+ * This file is part of AirReceiver.
+ *
+ * AirReceiver is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * AirReceiver is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with AirReceiver.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.phlo.audio;
 
 import java.nio.ByteBuffer;
@@ -5,22 +22,42 @@ import java.nio.ByteOrder;
 
 import javax.sound.sampled.*;
 
-public final class ByteFormat {
-	public final SampleLayout layout;
-	public final ByteOrder byteOrder;
-	public final SampleFormat sampleFormat;
+/**
+ * Described to format of a byte-based sample buffer
+ * (usually a {@link ByteBuffer}).
+ * <p>
+ * Used as a factory for {SampleIndexedAccessor} instances
+ * which provide access to the buffer's samples as
+ * float values indexed by their channel and sample
+ * index.
+ */
+public final class SampleByteBufferFormat {
+	/**
+	 * The buffer's layout
+	 */
+	public final SampleBufferLayout layout;
 	
-	public ByteFormat(SampleLayout _layout, ByteOrder _byteOrder, SampleFormat _sampleFormat) {
+	/**
+	 * The buffer's byte order
+	 */
+	public final ByteOrder byteOrder;
+	
+	/**
+	 * The individual sample's format
+	 */
+	public final SampleByteFormat sampleFormat;
+	
+	public SampleByteBufferFormat(SampleBufferLayout _layout, ByteOrder _byteOrder, SampleByteFormat _sampleFormat) {
 		layout = _layout;
 		byteOrder = _byteOrder;
 		sampleFormat = _sampleFormat;
 	}
 	
-	public ByteFormat(AudioFormat audioFormat) {
+	public SampleByteBufferFormat(AudioFormat audioFormat) {
 		this(
-			SampleLayout.Interleaved,
+			SampleBufferLayout.Interleaved,
 			audioFormat.isBigEndian() ? ByteOrder.BIG_ENDIAN : ByteOrder.LITTLE_ENDIAN,
-			SampleFormat.fromAudioFormat(audioFormat)
+			SampleByteFormat.fromAudioFormat(audioFormat)
 		);
 	}
 	

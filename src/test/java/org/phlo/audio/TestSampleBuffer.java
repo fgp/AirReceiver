@@ -1,3 +1,20 @@
+/*
+ * This file is part of AirReceiver.
+ *
+ * AirReceiver is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+
+ * AirReceiver is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with AirReceiver.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 package org.phlo.audio;
 
 import java.nio.ByteBuffer;
@@ -12,7 +29,7 @@ public class TestSampleBuffer {
 		SampleDimensions byteDimensions = new SampleDimensions(4, 3);
 		SampleDimensions sampleDimensions = new SampleDimensions(2, 4);
 
-		ByteFormat byteFormat = new ByteFormat(SampleLayout.Interleaved, ByteOrder.BIG_ENDIAN, SampleFormat.UnsignedInteger16);
+		SampleByteBufferFormat byteFormat = new SampleByteBufferFormat(SampleBufferLayout.Interleaved, ByteOrder.BIG_ENDIAN, SampleByteFormat.UnsignedInteger16);
 		byte[] bytes = {
 			/* channel 0 */				/* channel 1 */				/* channel 2 */				/* channel 3 */
 			(byte)0x00, (byte) 0x00,	(byte)0x80, (byte)0x00,		(byte)0x00, (byte)0x01,		(byte)0x00, (byte)0x00,
@@ -74,7 +91,7 @@ public class TestSampleBuffer {
 		SampleDimensions byteDimensions = new SampleDimensions(4, 3);
 		SampleDimensions sampleDimensions = new SampleDimensions(2, 4);
 
-		ByteFormat byteFormat = new ByteFormat(SampleLayout.Banded, ByteOrder.LITTLE_ENDIAN, SampleFormat.SignedInteger16);
+		SampleByteBufferFormat byteFormat = new SampleByteBufferFormat(SampleBufferLayout.Banded, ByteOrder.LITTLE_ENDIAN, SampleByteFormat.SignedInteger16);
 		byte[] bytes = {
 			/* channel 0 */	(byte)0x00, (byte)0x00,		(byte)0x00, (byte)0x00,			(byte)0x00, (byte)0x00,
 			/* channel 1 */	(byte)0x00, (byte)0x80,		(byte)0xfe, (byte)0xff,			(byte)0x01, (byte)0x00,
