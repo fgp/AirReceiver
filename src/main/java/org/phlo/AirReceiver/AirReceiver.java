@@ -327,73 +327,83 @@ public class AirReceiver {
 			}
     	}));
 
-    	/* Create about dialog */
-    	final Dialog aboutDialog = new Dialog((Dialog)null);
-    	final GridBagLayout aboutLayout = new GridBagLayout();
-    	aboutDialog.setLayout(aboutLayout);
-    	aboutDialog.setVisible(false);
-    	aboutDialog.setTitle("About AirReceiver");
-    	aboutDialog.setResizable(false);
-    	{
-    		/* Message */
-    		final TextArea title = new TextArea(AboutMessage.split("\n").length + 1, 64);
-    		title.setText(AboutMessage);
-    		title.setEditable(false);
-	    	final GridBagConstraints titleConstraints = new GridBagConstraints();
-	    	titleConstraints.gridx = 1;
-	    	titleConstraints.gridy = 1;
-	    	titleConstraints.fill = GridBagConstraints.HORIZONTAL;
-	    	titleConstraints.insets = new Insets(0,0,0,0);
-	    	aboutLayout.setConstraints(title, titleConstraints);
-	    	aboutDialog.add(title);
-    	}
-    	{
-    		/* Done button */
-	    	final Button aboutDoneButton = new Button("Done");
-	    	aboutDoneButton.addActionListener(new ActionListener() {
-				@Override public void actionPerformed(final ActionEvent evt) {
-					aboutDialog.setVisible(false);
+    	/* Setup GUI. If this throws a HeadlessException, we simply
+    	 * skip the GUI part and continue.
+    	 */
+    	try {
+	    	/* Create about dialog */
+	    	final Dialog aboutDialog = new Dialog((Dialog)null);
+	    	final GridBagLayout aboutLayout = new GridBagLayout();
+	    	aboutDialog.setLayout(aboutLayout);
+	    	aboutDialog.setVisible(false);
+	    	aboutDialog.setTitle("About AirReceiver");
+	    	aboutDialog.setResizable(false);
+	    	{
+	    		/* Message */
+	    		final TextArea title = new TextArea(AboutMessage.split("\n").length + 1, 64);
+	    		title.setText(AboutMessage);
+	    		title.setEditable(false);
+		    	final GridBagConstraints titleConstraints = new GridBagConstraints();
+		    	titleConstraints.gridx = 1;
+		    	titleConstraints.gridy = 1;
+		    	titleConstraints.fill = GridBagConstraints.HORIZONTAL;
+		    	titleConstraints.insets = new Insets(0,0,0,0);
+		    	aboutLayout.setConstraints(title, titleConstraints);
+		    	aboutDialog.add(title);
+	    	}
+	    	{
+	    		/* Done button */
+		    	final Button aboutDoneButton = new Button("Done");
+		    	aboutDoneButton.addActionListener(new ActionListener() {
+					@Override public void actionPerformed(final ActionEvent evt) {
+						aboutDialog.setVisible(false);
+					}
+		    	});
+		    	final GridBagConstraints aboutDoneConstraints = new GridBagConstraints();
+		    	aboutDoneConstraints.gridx = 1;
+		    	aboutDoneConstraints.gridy = 2;
+		    	aboutDoneConstraints.anchor = GridBagConstraints.PAGE_END;
+		    	aboutDoneConstraints.fill = GridBagConstraints.NONE;
+		    	aboutDoneConstraints.insets = new Insets(0,0,0,0);
+		    	aboutLayout.setConstraints(aboutDoneButton, aboutDoneConstraints);
+		    	aboutDialog.add(aboutDoneButton);
+	    	}
+	    	aboutDialog.setVisible(false);
+	    	aboutDialog.setLocationByPlatform(true);
+	    	aboutDialog.pack();
+	
+	    	/* Create tray icon */
+			final URL trayIconUrl = AirReceiver.class.getClassLoader().getResource("icon_32.png");
+			final TrayIcon trayIcon = new TrayIcon((new ImageIcon(trayIconUrl, "AirReceiver").getImage()));
+			trayIcon.setToolTip("AirReceiver");
+			trayIcon.setImageAutoSize(true);
+			final PopupMenu popupMenu = new PopupMenu();
+			final MenuItem aboutMenuItem = new MenuItem("About");
+			aboutMenuItem.addActionListener(new ActionListener() {
+				@Override
+				public void actionPerformed(final ActionEvent evt) {
+			    	aboutDialog.setLocationByPlatform(true);
+			    	aboutDialog.setVisible(true);
 				}
-	    	});
-	    	final GridBagConstraints aboutDoneConstraints = new GridBagConstraints();
-	    	aboutDoneConstraints.gridx = 1;
-	    	aboutDoneConstraints.gridy = 2;
-	    	aboutDoneConstraints.anchor = GridBagConstraints.PAGE_END;
-	    	aboutDoneConstraints.fill = GridBagConstraints.NONE;
-	    	aboutDoneConstraints.insets = new Insets(0,0,0,0);
-	    	aboutLayout.setConstraints(aboutDoneButton, aboutDoneConstraints);
-	    	aboutDialog.add(aboutDoneButton);
+			});
+			popupMenu.add(aboutMenuItem);
+			final MenuItem exitMenuItem = new MenuItem("Quit");
+			exitMenuItem.addActionListener(new ActionListener() {
+				@Override
+				public void actionPerformed(final ActionEvent evt) {
+					onShutdown();
+					System.exit(0);
+				}
+			});
+			popupMenu.add(exitMenuItem);
+			trayIcon.setPopupMenu(popupMenu);
+			SystemTray.getSystemTray().add(trayIcon);
+			
+    		s_logger.info("Running with GUI, created system tray icon and menu");
     	}
-    	aboutDialog.setVisible(false);
-    	aboutDialog.setLocationByPlatform(true);
-    	aboutDialog.pack();
-
-    	/* Create tray icon */
-		final URL trayIconUrl = AirReceiver.class.getClassLoader().getResource("icon_32.png");
-		final TrayIcon trayIcon = new TrayIcon((new ImageIcon(trayIconUrl, "AirReceiver").getImage()));
-		trayIcon.setToolTip("AirReceiver");
-		trayIcon.setImageAutoSize(true);
-		final PopupMenu popupMenu = new PopupMenu();
-		final MenuItem aboutMenuItem = new MenuItem("About");
-		aboutMenuItem.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(final ActionEvent evt) {
-		    	aboutDialog.setLocationByPlatform(true);
-		    	aboutDialog.setVisible(true);
-			}
-		});
-		popupMenu.add(aboutMenuItem);
-		final MenuItem exitMenuItem = new MenuItem("Quit");
-		exitMenuItem.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(final ActionEvent evt) {
-				onShutdown();
-				System.exit(0);
-			}
-		});
-		popupMenu.add(exitMenuItem);
-		trayIcon.setPopupMenu(popupMenu);
-		SystemTray.getSystemTray().add(trayIcon);
+    	catch (final HeadlessException e) {
+    		s_logger.info("Running headless");
+    	}
 
         /* Create AirTunes RTSP server */
 		final ServerBootstrap airTunesRtspBootstrap = new ServerBootstrap(new NioServerSocketChannelFactory(ExecutorService, ExecutorService));

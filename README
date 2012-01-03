@@ -44,7 +44,13 @@ If you're on Mac OS X, download the AirReceiver-app.zip from the bin/ folder
 
 If you're on Windows or Linux, download the AirReceiver.one-jar.jar and
 double-click it (or type java -jar AirReceiver.one-jar.jar on the command
-line).
+line). (AirReceiver.one-jar.jar works on Mac OS X too, btw)
+
+AirReceiver also supports headless operation, i.e. it will work even if it
+cannot show it's GUI. Thanks to simonjj for that!. You can force it to run
+headless by specifying -Djava.awt.headless=true on the commane line, i.e.
+by launching AirReceiver with
+java -Djava.awt.headless=true -jar AirReceiver.one-jar.jar
 
 Either way, give it about half a minute to announce itself on the network,
 then choose it as output device on your iOS device or in iTunes.
