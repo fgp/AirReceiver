@@ -298,7 +298,7 @@ public class RaopAudioHandler extends SimpleChannelUpstreamHandler {
 	 * <li> {@code <attribute>=aesiv} 
 	 * </ul>
 	 */
-	private static Pattern s_pattern_sdp_a = Pattern.compile("^([a-z]+):(.*)$");
+	private static Pattern s_pattern_sdp_a = Pattern.compile("^([^:]+):(.*)$");
 	
 	/**
 	 * SDP {@code a} attribute {@code rtpmap}. Format is
